@@ -187,7 +187,7 @@ function viewDefects(){
     h+='<div class="item" data-a="defect" data-id="'+d.id+'">'+
       (d.thumb?'<img src="'+url(d.thumb)+'">':'<img>')+
       '<div class="txt"><div class="t1"><span class="num">'+d.num+'</span>'+esc(d.location||"—")+'</div>'+
-      '<div class="t2">'+esc(d.description||"(nessuna descrizione)")+'</div>'+
+      '<div class="t2">'+esc(d.title||d.description||"(senza titolo)")+'</div>'+
       '<div style="margin-top:5px"><span class="pill '+(d.status==="done"?"done":"open")+'">'+(d.status==="done"?"chiuso":"aperto")+'</span>'+
       (d.x==null?' <span class="pill open">no pianta</span>':'')+'</div></div></div>';
   }
@@ -203,13 +203,14 @@ function viewDefect(d){
 
    '<div class="card">'+
    '<label>Location</label><input id="f_loc" list="dlLoc" value="'+esc(d.location||"")+'" placeholder="es. VIC ROOM">'+opt("dlLoc",loc)+
+   '<label>Titolo</label><input id="f_title" value="'+esc(d.title||"")+'" placeholder="es. Graffio pannello scagliola">'+
    '<label>Descrizione del difetto</label><textarea id="f_desc" placeholder="Descrivi il problema e cosa serve per risolverlo">'+esc(d.description||"")+'</textarea>'+
    '<label>Supplier / Responsibility</label><input id="f_sup" list="dlSup" value="'+esc(d.supplier||"")+'" placeholder="es. POLVERINI">'+opt("dlSup",sup)+
    '<label>Defect completed entro</label><input id="f_due" type="date" value="'+esc(d.dueDate||S.proj.due||"")+'">'+
    '<button class="btn" data-a="saveDefect">Salva</button></div>'+
 
    '<div class="card"><h3>Posizione sulla pianta</h3>'+
-   (d.x==null?'<div class="mut">Non ancora posizionato.</div>':'<div class="mut">Posizionato · direzione '+Math.round(d.angle)+'&deg;</div>')+
+   (d.x==null?'<div class="mut">Non ancora posizionato.</div>':'<div class="mut">Posizionato &middot; '+(d.angle==null?"solo numero, senza freccia":"direzione "+Math.round(d.angle)+"&deg;")+'</div>')+
    '<button class="btn sec" data-a="place">'+(d.x==null?"Posiziona sulla pianta":"Modifica posizione")+'</button></div>'+
 
    '<div class="card"><h3>Foto della correzione (AFTER)</h3>'+
@@ -226,14 +227,19 @@ function viewPlan(){
   return (miss?'<div class="hint">'+miss+' difetti non ancora posizionati sulla pianta.</div>':'')+
   '<div class="planwrap" id="pw"><canvas id="pc"></canvas></div>'+
   '<div class="mut" style="margin-top:10px">Trascina per spostare, pizzica per ingrandire. Questa &egrave; l&rsquo;immagine che finir&agrave; nella sezione 3 del report.</div>'+
+  '<div class="card" style="margin-top:12px"><label>Dimensione numeri e frecce <span id="mkLbl">'+((S.proj.mk||1).toFixed(1))+'&times;</span></label>'+
+  '<input type="range" id="mkSl" min="0.4" max="3" step="0.1" value="'+(S.proj.mk||1)+'" style="padding:0"></div>'+
   '<div class="g2" style="margin-top:12px"><button class="btn sec sm" data-a="rotate">Ruota di 90&deg;</button>'+
   '<button class="btn sec sm" data-a="pickplan2">Sostituisci pianta</button></div>';
 }
 function viewPlace(d){
   if(!S.proj.plan)return '<div class="card"><div class="empty">Carica prima una planimetria.</div></div>';
+  const noAr=PL.tmp?PL.tmp.angle==null:d.angle==null&&d.x!=null;
   return '<div class="hint" id="stepHint">1 di 2 &mdash; tocca sulla pianta il punto in cui ti trovi</div>'+
   '<div class="planwrap" id="pw"><canvas id="pc"></canvas></div>'+
-  '<div class="card" style="margin-top:12px"><label>Direzione di ripresa <span id="angLbl">'+(d.x==null?"—":Math.round(d.angle)+"°")+'</span></label>'+
+  '<div class="card" style="margin-top:12px">'+
+  '<button class="btn '+(noAr?"":"sec")+' sm" data-a="noarrow" id="btnNoAr">'+(noAr?"&#10003; Solo numero, senza freccia":"Solo numero, senza freccia")+'</button>'+
+  '<label>Direzione di ripresa <span id="angLbl">'+(d.x==null?"—":(d.angle==null?"nessuna":Math.round(d.angle)+"°"))+'</span></label>'+
   '<input type="range" id="angSl" min="0" max="359" value="'+(d.angle||0)+'" style="padding:0">'+
   '<div class="g2" style="margin-top:12px"><button class="btn sec sm" data-a="replace">Ricomincia</button><button class="btn sm" data-a="savePlace">Conferma</button></div></div>';
 }
@@ -266,6 +272,7 @@ async function mountPlan(placeMode){
   PL.mode=placeMode;PL.step=0;
   const d=placeMode?S.defects.find(x=>x.id===S.did):null;
   PL.tmp=d&&d.x!=null?{x:d.x,y:d.y,angle:d.angle}:null;
+  PL.noArrow=!!(d&&d.x!=null&&d.angle==null);
   if(PL.tmp)PL.step=2;
   c.width=PL.img.width;c.height=PL.img.height;
   const fit=Math.min(wrap.clientWidth/PL.img.width,wrap.clientHeight/PL.img.height);
@@ -274,11 +281,12 @@ async function mountPlan(placeMode){
   gestures(wrap,c);
 }
 function applyT(){const c=$("#pc");if(c)c.style.transform="translate("+PL.tx+"px,"+PL.ty+"px) scale("+PL.scale+")";}
-function markerSize(){return Math.max(18,Math.round(Math.max(PL.img.width,PL.img.height)/26));}
+function markerSize(){const k=(S.proj&&S.proj.mk)||1;return Math.max(8,Math.round(Math.max(PL.img.width,PL.img.height)/60*k));}
 function drawMarker(g,x,y,ang,label,dim){
   const s=markerSize(),arrow=s*2.4,rad=ang*Math.PI/180;
   g.save();g.globalAlpha=dim?0.45:1;
-  // arrow
+  // arrow (omessa se ang è null)
+  if(ang!=null){
   g.strokeStyle="#e30613";g.fillStyle="#e30613";g.lineWidth=Math.max(2,s*0.16);g.lineCap="round";
   const x0=x+Math.cos(rad)*s*0.75,y0=y+Math.sin(rad)*s*0.75;
   const x1=x+Math.cos(rad)*arrow,y1=y+Math.sin(rad)*arrow;
@@ -288,6 +296,7 @@ function drawMarker(g,x,y,ang,label,dim){
   g.lineTo(x1-Math.cos(rad)*hl-Math.cos(rad+Math.PI/2)*hw, y1-Math.sin(rad)*hl-Math.sin(rad+Math.PI/2)*hw);
   g.lineTo(x1-Math.cos(rad)*hl+Math.cos(rad+Math.PI/2)*hw, y1-Math.sin(rad)*hl+Math.sin(rad+Math.PI/2)*hw);
   g.closePath();g.fill();
+  }
   // box
   const bw=s*(String(label).length>1?1.55:1.15),bh=s*1.15;
   g.fillStyle="#e30613";g.fillRect(x-bw/2,y-bh/2,bw,bh);
@@ -324,8 +333,11 @@ function gestures(wrap,c){
     pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(pts.size===0)last=null;
     if(moved<9&&PL.mode&&pts.size===0){
       const p=toPlan(e.clientX,e.clientY);
-      if(PL.step===0||PL.step===2){PL.tmp={x:p.x,y:p.y,angle:PL.tmp?PL.tmp.angle:0};PL.step=1;
-        $("#stepHint").innerHTML="2 di 2 &mdash; ora tocca <b>cosa stai inquadrando</b>: la freccia si orienta da sola";}
+      if(PL.step===0||PL.step===2){
+        if(PL.noArrow){PL.tmp={x:p.x,y:p.y,angle:null};PL.step=2;
+          $("#stepHint").innerHTML="Numero posizionato. Tocca altrove per spostarlo, poi <b>Conferma</b>.";}
+        else{PL.tmp={x:p.x,y:p.y,angle:PL.tmp&&PL.tmp.angle!=null?PL.tmp.angle:0};PL.step=1;
+          $("#stepHint").innerHTML="2 di 2 &mdash; ora tocca <b>cosa stai inquadrando</b>: la freccia si orienta da sola";}}
       else if(PL.step===1){const a=Math.atan2(p.y-PL.tmp.y,p.x-PL.tmp.x)*180/Math.PI;PL.tmp.angle=(a+360)%360;PL.step=2;
         $("#stepHint").innerHTML="Fatto. Ritocca con il cursore o <b>Conferma</b>.";$("#angSl").value=Math.round(PL.tmp.angle);$("#angLbl").textContent=Math.round(PL.tmp.angle)+"°";}
       drawPlan(c.getContext("2d"));
@@ -377,7 +389,7 @@ async function doZip(){
     const files=[],p=S.proj,rec=[];
     let i=0;const tot=S.defects.length*2+2;
     for(const d of S.defects){
-      const r={num:d.num,location:d.location||"",description:d.description||"",supplier:d.supplier||"",
+      const r={num:d.num,location:d.location||"",title:d.title||"",description:d.description||"",supplier:d.supplier||"",
                dueDate:d.dueDate||p.due||"",status:d.status||"open",x:d.x,y:d.y,angle:d.angle,
                before:null,after:null,createdAt:d.createdAt,closedAt:d.closedAt||null};
       if(d.before){const b=await resize(d.before,2200,0.86);r.before="foto/"+pad(d.num)+"_before.jpg";files.push({name:r.before,data:await bytes(b)});}
@@ -427,7 +439,13 @@ async function saveGallery(){
 let tmpPlan=null;
 function bind(){
   document.querySelectorAll("[data-a]").forEach(el=>{el.onclick=ev=>{ev.stopPropagation();act(el.dataset.a,el.dataset.id,el);};});
-  const sl=$("#angSl");if(sl)sl.oninput=()=>{if(!PL.tmp)return;PL.tmp.angle=+sl.value;$("#angLbl").textContent=sl.value+"°";drawPlan($("#pc").getContext("2d"));};
+  const sl=$("#angSl");if(sl)sl.oninput=()=>{if(!PL.tmp)return;PL.noArrow=false;PL.tmp.angle=+sl.value;
+    $("#angLbl").textContent=sl.value+"°";const b=$("#btnNoAr");if(b){b.className="btn sec sm";b.innerHTML="Solo numero, senza freccia";}
+    drawPlan($("#pc").getContext("2d"));};
+  const mk=$("#mkSl");if(mk){
+    mk.oninput=()=>{S.proj.mk=+mk.value;$("#mkLbl").innerHTML=(+mk.value).toFixed(1)+"&times;";drawPlan($("#pc").getContext("2d"));};
+    mk.onchange=()=>{dbPut("projects",S.proj);};
+  }
 }
 async function act(a,id){
   const P=S.proj;
@@ -447,7 +465,7 @@ async function act(a,id){
     const g=c.getContext("2d");g.translate(c.width,0);g.rotate(Math.PI/2);g.drawImage(bmp,0,0);bmp.close();
     P.plan=await new Promise(r=>c.toBlob(r,"image/png"));
     await dbPut("projects",P);
-    for(const d of S.defects){if(d.x==null)continue;const nx=oldH-d.y,ny=d.x;d.x=nx;d.y=ny;d.angle=(d.angle+90)%360;await dbPut("defects",d);}
+    for(const d of S.defects){if(d.x==null)continue;const nx=oldH-d.y,ny=d.x;d.x=nx;d.y=ny;if(d.angle!=null)d.angle=(d.angle+90)%360;await dbPut("defects",d);}
     toast("Pianta ruotata");return render();
   }
   if(a==="saveproj"){
@@ -461,7 +479,7 @@ async function act(a,id){
     const f=await pickFile(true);if(!f)return;
     const num=S.defects.reduce((m,d)=>Math.max(m,d.num),0)+1;
     const d={id:uid(),projectId:P.id,num,before:f,thumb:await resize(f,320,0.7),after:null,
-      location:"",description:"",supplier:"",dueDate:P.due||"",status:"open",x:null,y:null,angle:0,createdAt:Date.now()};
+      location:"",title:"",description:"",supplier:"",dueDate:P.due||"",status:"open",x:null,y:null,angle:0,createdAt:Date.now()};
     await dbPut("defects",d);toast("Difetto n° "+num+" creato");return go("defect",{did:d.id});
   }
   const d=S.defects.find(x=>x.id===S.did);
@@ -469,13 +487,22 @@ async function act(a,id){
   if(a==="shootAfter"){const f=await pickFile(true);if(!f)return;d.after=f;if(d.status!=="done"){d.status="done";d.closedAt=Date.now();}await dbPut("defects",d);toast("Correzione registrata, difetto chiuso");return render();}
   if(a==="toggleDone"){d.status=d.status==="done"?"open":"done";d.closedAt=d.status==="done"?Date.now():null;await dbPut("defects",d);return render();}
   if(a==="saveDefect"){
-    d.location=$("#f_loc").value.trim().toUpperCase();d.description=$("#f_desc").value.trim();
+    d.location=$("#f_loc").value.trim().toUpperCase();d.title=$("#f_title").value.trim();d.description=$("#f_desc").value.trim();
     d.supplier=$("#f_sup").value.trim().toUpperCase();d.dueDate=$("#f_due").value;
     if(d.location&&!(P.locations||[]).includes(d.location)){P.locations=[...(P.locations||[]),d.location];await dbPut("projects",P);}
     if(d.supplier&&!(P.suppliers||[]).includes(d.supplier)){P.suppliers=[...(P.suppliers||[]),d.supplier];await dbPut("projects",P);}
     await dbPut("defects",d);toast("Salvato");return go("project",{tab:"def"});
   }
   if(a==="place")return go("place");
+  if(a==="noarrow"){
+    PL.noArrow=!PL.noArrow;
+    if(PL.tmp)PL.tmp.angle=PL.noArrow?null:0;
+    const b=$("#btnNoAr");b.className="btn "+(PL.noArrow?"":"sec")+" sm";
+    b.innerHTML=(PL.noArrow?"&#10003; ":"")+"Solo numero, senza freccia";
+    $("#angLbl").textContent=PL.noArrow?"nessuna":(PL.tmp?Math.round(PL.tmp.angle)+"°":"—");
+    if(PL.tmp)drawPlan($("#pc").getContext("2d"));
+    return;
+  }
   if(a==="replace"){PL.tmp=null;PL.step=0;$("#stepHint").innerHTML="1 di 2 &mdash; tocca sulla pianta il punto in cui ti trovi";drawPlan($("#pc").getContext("2d"));return;}
   if(a==="savePlace"){if(!PL.tmp)return toast("Tocca prima la tua posizione");d.x=PL.tmp.x;d.y=PL.tmp.y;d.angle=PL.tmp.angle;await dbPut("defects",d);toast("Posizione salvata");return go("defect");}
   if(a==="delDefect"){if(!confirm("Eliminare il difetto n° "+d.num+"?"))return;await dbDel("defects",d.id);return go("project",{tab:"def"});}
