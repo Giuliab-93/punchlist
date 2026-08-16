@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Punch List</title>
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1a1a1a">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
 html,body{margin:0;padding:0;height:100%;font-family:system-ui,-apple-system,Roboto,sans-serif;background:#f4f4f5;color:#18181b;overscroll-behavior:none}
 header{position:sticky;top:0;z-index:50;background:#1a1a1a;color:#fff;padding:env(safe-area-inset-top) 0 0 0}
 .hbar{display:flex;align-items:center;gap:10px;padding:12px 14px;min-height:56px}
@@ -151,7 +152,9 @@ async function render(){
 async function viewProjects(){
   const ps=(await dbAll("projects")).sort((a,b)=>b.createdAt-a.createdAt);
   const all=await dbAll("defects");
-  let h='<button class="btn" data-a="newproj">+ Nuovo cantiere</button>';
+  let h="";
+  if(installEvt)h+='<button class="btn green" data-a="install">Installa l&rsquo;app sul telefono</button>';
+  h+='<button class="btn" data-a="newproj">+ Nuovo cantiere</button>';
   if(!ps.length)return h+'<div class="empty">Nessun cantiere.<br>Creane uno per iniziare il sopralluogo.</div>';
   h+='<div style="height:8px"></div>';
   for(const p of ps){
@@ -428,6 +431,11 @@ function bind(){
 }
 async function act(a,id){
   const P=S.proj;
+  if(a==="install"){
+    if(!installEvt)return toast("Usa il menu ⋮ di Chrome → Installa app");
+    installEvt.prompt();const r=await installEvt.userChoice;installEvt=null;
+    toast(r.outcome==="accepted"?"App installata":"Installazione annullata");return render();
+  }
   if(a==="newproj")return go("newproj");
   if(a==="open")return go("project",{pid:id,tab:"def"});
   if(a==="defect")return go("defect",{did:id});
@@ -474,6 +482,11 @@ async function act(a,id){
   if(a==="zip")return doZip();
   if(a==="gallery")return saveGallery();
 }
+
+/* ============ installazione ============ */
+let installEvt=null;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;if(S.view==="projects")render();});
+window.addEventListener("appinstalled",()=>{installEvt=null;toast("App installata");});
 
 /* ============ boot ============ */
 $("#btnBack").onclick=back;
