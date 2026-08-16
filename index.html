@@ -253,7 +253,7 @@ function viewExport(){
    '</div>'+
    '<div class="card"><h3>1. Pacchetto per il report</h3><div class="mut">Crea uno zip con foto, dati e pianta annotata. Da passare al generatore Word.</div>'+
    '<button class="btn" data-a="zip">Esporta pacchetto .zip</button></div>'+
-   '<div class="card"><h3>2. Copia di sicurezza</h3><div class="mut">Salva tutte le foto originali nella galleria del telefono (cartella Download).</div>'+
+   '<div class="card"><h3>2. Copia di sicurezza</h3><div class="mut">Scarica tutte le foto originali nella cartella <b>Download</b> del telefono, visibile in Google Foto come album. Al primo utilizzo Chrome chiede il permesso di scaricare pi&ugrave; file: consenti.</div>'+
    '<button class="btn sec" data-a="gallery">Salva tutte in galleria</button></div>'+
    '<div class="card"><h3>Dati cantiere</h3>'+
    '<label>Nome</label><input id="f_name" value="'+esc(S.proj.name)+'">'+
@@ -281,7 +281,7 @@ async function mountPlan(placeMode){
   gestures(wrap,c);
 }
 function applyT(){const c=$("#pc");if(c)c.style.transform="translate("+PL.tx+"px,"+PL.ty+"px) scale("+PL.scale+")";}
-function markerSize(){const k=(S.proj&&S.proj.mk)||1;return Math.max(8,Math.round(Math.max(PL.img.width,PL.img.height)/60*k));}
+function markerSize(){const k=(S.proj&&S.proj.mk)||1;return Math.max(8,Math.round(Math.max(PL.img.width,PL.img.height)/40*k));}
 function drawMarker(g,x,y,ang,label,dim){
   const s=markerSize(),arrow=s*2.4,rad=ang*Math.PI/180;
   g.save();g.globalAlpha=dim?0.45:1;
@@ -427,9 +427,8 @@ async function saveGallery(){
     if(d.after)list.push(new File([d.after],base+"_"+pad(d.num)+"_after.jpg",{type:"image/jpeg"}));
   }
   if(!list.length){toast("Nessuna foto");return;}
-  if(navigator.canShare&&navigator.canShare({files:list})){
-    try{await navigator.share({files:list,title:"Foto punch list"});return;}catch(e){if(e.name==="AbortError")return;}
-  }
+  // Download diretto: il menu Condividi di Android non ha una voce "salva in galleria".
+  // I file finiscono in Download, che Google Foto mostra come album del dispositivo.
   busy("Salvataggio "+list.length+" foto…");
   for(let i=0;i<list.length;i++){const a=document.createElement("a");a.href=URL.createObjectURL(list[i]);a.download=list[i].name;a.click();busyPct((i+1)/list.length);await new Promise(r=>setTimeout(r,300));URL.revokeObjectURL(a.href);}
   unbusy();toast("Foto salvate nella cartella Download");
