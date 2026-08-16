@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Punch List</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1a1a1a">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;font-family:system-ui,-apple-system,Roboto,sans-serif;background:#f4f4f5;color:#18181b;overscroll-behavior:none}
+header{position:sticky;top:0;z-index:50;background:#1a1a1a;color:#fff;padding:env(safe-area-inset-top) 0 0 0}
+.hbar{display:flex;align-items:center;gap:10px;padding:12px 14px;min-height:56px}
+.hbar h1{font-size:17px;margin:0;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.back{background:none;border:0;color:#fff;font-size:22px;padding:4px 8px;cursor:pointer}
+main{padding:14px 14px 120px}
+.card{background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.row{display:flex;gap:10px;align-items:center}
+label{display:block;font-size:12px;font-weight:600;color:#52525b;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 6px}
+input,textarea,select{width:100%;padding:13px;border:1.5px solid #d4d4d8;border-radius:10px;font-size:16px;font-family:inherit;background:#fff}
+textarea{min-height:96px;resize:vertical}
+button{font-family:inherit;font-size:16px;cursor:pointer}
+.btn{display:block;width:100%;padding:15px;border:0;border-radius:12px;background:#1a1a1a;color:#fff;font-weight:600;margin-top:12px}
+.btn.sec{background:#fff;color:#1a1a1a;border:1.5px solid #d4d4d8}
+.btn.red{background:#dc2626}
+.btn.green{background:#15803d}
+.btn:disabled{opacity:.4}
+.btn.sm{padding:11px;font-size:14px;margin-top:0}
+.fab{position:fixed;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:40;width:64px;height:64px;border-radius:32px;background:#dc2626;color:#fff;border:0;font-size:30px;box-shadow:0 6px 18px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
+.tabs{display:flex;background:#262626}
+.tabs button{flex:1;background:none;border:0;color:#a1a1aa;padding:13px 4px;font-size:13px;font-weight:600;border-bottom:3px solid transparent}
+.tabs button.on{color:#fff;border-bottom-color:#dc2626}
+.item{display:flex;gap:12px;align-items:center;background:#fff;border-radius:14px;padding:10px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.item img{width:64px;height:64px;object-fit:cover;border-radius:10px;background:#e4e4e7;flex:none}
+.item .txt{flex:1;min-width:0}
+.item .t1{font-weight:700;font-size:15px}
+.item .t2{font-size:13px;color:#52525b;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.num{background:#dc2626;color:#fff;font-weight:800;border-radius:6px;padding:1px 7px;font-size:13px;margin-right:6px}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px}
+.pill.open{background:#fee2e2;color:#b91c1c}
+.pill.done{background:#dcfce7;color:#15803d}
+.empty{text-align:center;color:#71717a;padding:50px 20px;font-size:15px}
+.planwrap{position:relative;overflow:hidden;background:#e4e4e7;border-radius:12px;touch-action:none;height:calc(100vh - 260px);min-height:300px}
+.planwrap canvas{position:absolute;top:0;left:0;transform-origin:0 0}
+.hint{background:#fef3c7;border:1px solid #fcd34d;color:#78350f;padding:11px 13px;border-radius:10px;font-size:14px;font-weight:600;margin-bottom:10px}
+.ph{width:100%;border-radius:12px;background:#e4e4e7;display:block}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mut{font-size:13px;color:#71717a;line-height:1.5}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:100px;background:#18181b;color:#fff;padding:12px 18px;border-radius:24px;font-size:14px;z-index:200;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:88%;text-align:center}
+.ovl{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;display:flex;align-items:center;justify-content:center;padding:30px;color:#fff;text-align:center;font-size:16px;font-weight:600;flex-direction:column;gap:14px}
+.bar{width:220px;height:6px;background:#3f3f46;border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:#dc2626;width:0}
+hr{border:0;border-top:1px solid #e4e4e7;margin:16px 0}
+h3{font-size:15px;margin:0 0 10px}
+</style>
+</head>
+<body>
+<header>
+  <div class="hbar"><button class="back" id="btnBack" hidden>&#8592;</button><h1 id="title">Punch List</h1><button class="back" id="btnHome" hidden>&#8962;</button></div>
+  <div class="tabs" id="tabs" hidden>
+    <button data-tab="def" class="on">DIFETTI</button>
+    <button data-tab="plan">PIANTA</button>
+    <button data-tab="exp">ESPORTA</button>
+  </div>
+</header>
+<main id="main"></main>
+<button class="fab" id="fab" hidden>+</button>
+
+<script>
+"use strict";
+/* ============ DB ============ */
+let db;
+const DBN="punchlist_v1";
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DBN,1);
+ r.onupgradeneeded=e=>{const d=e.target.result;
+   if(!d.objectStoreNames.contains("projects"))d.createObjectStore("projects",{keyPath:"id"});
+   if(!d.objectStoreNames.contains("defects")){const s=d.createObjectStore("defects",{keyPath:"id"});s.createIndex("pid","projectId");}
+ };
+ r.onsuccess=()=>{db=r.result;res()};r.onerror=()=>rej(r.error);});}
+function os(n,m){return db.transaction(n,m||"readonly").objectStore(n)}
+function req(r){return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+const dbPut=(n,o)=>req(os(n,"readwrite").put(o)).then(()=>o);
+const dbGet=(n,id)=>req(os(n).get(id));
+const dbAll=n=>req(os(n).getAll());
+const dbDel=(n,id)=>req(os(n,"readwrite").delete(id));
+const dbByProj=pid=>req(os("defects").index("pid").getAll(pid));
+
+/* ============ util ============ */
+const $=s=>document.querySelector(s);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const esc=s=>(s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pad=n=>String(n).padStart(3,"0");
+function toast(m,ms){const t=document.createElement("div");t.className="toast";t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),ms||2600);}
+let ovlEl=null;
+function busy(msg){if(!ovlEl){ovlEl=document.createElement("div");ovlEl.className="ovl";ovlEl.innerHTML='<div id="ovlMsg"></div><div class="bar"><i id="ovlBar"></i></div>';document.body.appendChild(ovlEl);}$("#ovlMsg").textContent=msg;$("#ovlBar").style.width="0%";}
+function busyPct(p){if(ovlEl)$("#ovlBar").style.width=Math.round(p*100)+"%";}
+function unbusy(){if(ovlEl){ovlEl.remove();ovlEl=null;}}
+function today(){const d=new Date();return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());}
+const pad2=n=>String(n).padStart(2,"0");
+function itDate(iso){if(!iso)return"";const p=iso.split("-");return p.length===3?p[2]+"."+p[1]+"."+p[0]:iso;}
+const urls=[];
+function url(b){if(!b)return"";const u=URL.createObjectURL(b);urls.push(u);return u;}
+function freeUrls(){while(urls.length)URL.revokeObjectURL(urls.pop());}
+
+/* camera / file */
+function pickFile(cam){return new Promise(res=>{const i=document.createElement("input");i.type="file";i.accept="image/*";if(cam)i.capture="environment";i.onchange=()=>res(i.files&&i.files[0]||null);i.click();});}
+async function resize(blob,max,q){
+  const bmp=await createImageBitmap(blob);
+  let w=bmp.width,h=bmp.height;
+  const s=Math.min(1,max/Math.max(w,h));w=Math.round(w*s);h=Math.round(h*s);
+  const c=document.createElement("canvas");c.width=w;c.height=h;
+  c.getContext("2d").drawImage(bmp,0,0,w,h);bmp.close();
+  return await new Promise(r=>c.toBlob(r,"image/jpeg",q||0.85));
+}
+
+/* ============ state ============ */
+let S={view:"projects",tab:"def",pid:null,proj:null,defects:[],did:null};
+const DEF_LOC=["VIC ROOM","SALES AREA","ENTRANCE","BOH 1","BOH 2","WINDOW","FACADE","MEP ROOM","CEILING","FLOORING"];
+const DEF_SUP=["POLVERINI","GENERAL CONTRACTOR","MILLWORKER","MEP CONTRACTOR","LIGHTING","FLOORING","GLASS","OTHER"];
+
+/* ============ router ============ */
+async function go(v,opt){S.view=v;Object.assign(S,opt||{});await render();window.scrollTo(0,0);}
+window.addEventListener("popstate",()=>{if(S.view!=="projects"){back();history.pushState({},"");}});
+function back(){
+  if(S.view==="defect"||S.view==="place")go("project");
+  else if(S.view==="project"||S.view==="newproj")go("projects");
+}
+
+/* ============ render ============ */
+async function render(){
+  freeUrls();
+  const m=$("#main"),t=$("#title"),tabs=$("#tabs"),fab=$("#fab"),bb=$("#btnBack"),bh=$("#btnHome");
+  tabs.hidden=true;fab.hidden=true;bb.hidden=S.view==="projects";bh.hidden=S.view==="projects";
+  if(S.pid&&S.view!=="projects"&&S.view!=="newproj"){S.proj=await dbGet("projects",S.pid);S.defects=(await dbByProj(S.pid)).sort((a,b)=>a.num-b.num);}
+  if(S.view==="projects"){t.textContent="Punch List";m.innerHTML=await viewProjects();}
+  else if(S.view==="newproj"){t.textContent="Nuovo cantiere";m.innerHTML=viewNewProj();}
+  else if(S.view==="project"){
+    t.textContent=S.proj.name;tabs.hidden=false;
+    [...tabs.children].forEach(b=>b.classList.toggle("on",b.dataset.tab===S.tab));
+    if(S.tab==="def"){m.innerHTML=viewDefects();fab.hidden=false;}
+    else if(S.tab==="plan"){m.innerHTML=viewPlan();mountPlan(false);}
+    else {m.innerHTML=viewExport();}
+  }
+  else if(S.view==="defect"){const d=S.defects.find(x=>x.id===S.did);t.textContent="Difetto n° "+d.num;m.innerHTML=viewDefect(d);}
+  else if(S.view==="place"){const d=S.defects.find(x=>x.id===S.did);t.textContent="Posizione n° "+d.num;m.innerHTML=viewPlace(d);mountPlan(true);}
+  bind();
+}
+
+/* ---- projects ---- */
+async function viewProjects(){
+  const ps=(await dbAll("projects")).sort((a,b)=>b.createdAt-a.createdAt);
+  const all=await dbAll("defects");
+  let h='<button class="btn" data-a="newproj">+ Nuovo cantiere</button>';
+  if(!ps.length)return h+'<div class="empty">Nessun cantiere.<br>Creane uno per iniziare il sopralluogo.</div>';
+  h+='<div style="height:8px"></div>';
+  for(const p of ps){
+    const ds=all.filter(d=>d.projectId===p.id);
+    const open=ds.filter(d=>d.status!=="done").length;
+    h+='<div class="item" data-a="open" data-id="'+p.id+'">'+
+       (p.plan?'<img src="'+url(p.plan)+'">':'<img>')+
+       '<div class="txt"><div class="t1">'+esc(p.name)+'</div><div class="t2">'+esc(p.address||"")+'</div>'+
+       '<div style="margin-top:5px"><span class="pill '+(open?"open":"done")+'">'+ds.length+' difetti · '+open+' aperti</span></div></div></div>';
+  }
+  return h;
+}
+function viewNewProj(){
+  return '<div class="card">'+
+  '<label>Nome cantiere</label><input id="f_name" placeholder="es. BVLGARI Dubai Jumeira">'+
+  '<label>Indirizzo</label><input id="f_addr" placeholder="Jumeira Bay Island, Dubai">'+
+  '<label>Deadline completamento</label><input id="f_due" type="date">'+
+  '<label>Preparato da</label><input id="f_by" value="Giulia Bracci">'+
+  '<hr><label>Planimetria (immagine PNG/JPG)</label>'+
+  '<button class="btn sec" data-a="pickplan">Scegli file planimetria</button>'+
+  '<div class="mut" style="margin-top:8px">Serve la pianta gi&agrave; ritagliata, senza cornice e legenda. Puoi caricarla anche dopo.</div>'+
+  '<img class="ph" id="planPrev" hidden style="margin-top:10px">'+
+  '<button class="btn" data-a="saveproj">Crea cantiere</button></div>';
+}
+/* ---- defects list ---- */
+function viewDefects(){
+  if(!S.defects.length)return '<div class="empty">Nessun difetto registrato.<br>Tocca <b>+</b> per il primo scatto.</div>';
+  let h="";
+  for(const d of S.defects){
+    h+='<div class="item" data-a="defect" data-id="'+d.id+'">'+
+      (d.thumb?'<img src="'+url(d.thumb)+'">':'<img>')+
+      '<div class="txt"><div class="t1"><span class="num">'+d.num+'</span>'+esc(d.location||"—")+'</div>'+
+      '<div class="t2">'+esc(d.description||"(nessuna descrizione)")+'</div>'+
+      '<div style="margin-top:5px"><span class="pill '+(d.status==="done"?"done":"open")+'">'+(d.status==="done"?"chiuso":"aperto")+'</span>'+
+      (d.x==null?' <span class="pill open">no pianta</span>':'')+'</div></div></div>';
+  }
+  return h;
+}
+/* ---- single defect ---- */
+function viewDefect(d){
+  const loc=S.proj.locations||DEF_LOC, sup=S.proj.suppliers||DEF_SUP;
+  const opt=(a,v)=>'<datalist id="'+a+'">'+ (v||[]).map(x=>'<option value="'+esc(x)+'">').join("")+'</datalist>';
+  return '<div class="card"><h3>Foto del difetto (BEFORE)</h3>'+
+   (d.before?'<img class="ph" src="'+url(d.before)+'">':'<div class="empty">nessuna foto</div>')+
+   '<button class="btn sec sm" data-a="shootBefore" style="margin-top:10px">Riscatta foto difetto</button></div>'+
+
+   '<div class="card">'+
+   '<label>Location</label><input id="f_loc" list="dlLoc" value="'+esc(d.location||"")+'" placeholder="es. VIC ROOM">'+opt("dlLoc",loc)+
+   '<label>Descrizione del difetto</label><textarea id="f_desc" placeholder="Descrivi il problema e cosa serve per risolverlo">'+esc(d.description||"")+'</textarea>'+
+   '<label>Supplier / Responsibility</label><input id="f_sup" list="dlSup" value="'+esc(d.supplier||"")+'" placeholder="es. POLVERINI">'+opt("dlSup",sup)+
+   '<label>Defect completed entro</label><input id="f_due" type="date" value="'+esc(d.dueDate||S.proj.due||"")+'">'+
+   '<button class="btn" data-a="saveDefect">Salva</button></div>'+
+
+   '<div class="card"><h3>Posizione sulla pianta</h3>'+
+   (d.x==null?'<div class="mut">Non ancora posizionato.</div>':'<div class="mut">Posizionato · direzione '+Math.round(d.angle)+'&deg;</div>')+
+   '<button class="btn sec" data-a="place">'+(d.x==null?"Posiziona sulla pianta":"Modifica posizione")+'</button></div>'+
+
+   '<div class="card"><h3>Foto della correzione (AFTER)</h3>'+
+   (d.after?'<img class="ph" src="'+url(d.after)+'">':'<div class="mut">Da scattare al giro di verifica.</div>')+
+   '<button class="btn '+(d.after?"sec":"green")+'" data-a="shootAfter">'+(d.after?"Riscatta foto correzione":"Scatta foto correzione")+'</button>'+
+   (d.after?'<button class="btn '+(d.status==="done"?"sec":"")+'" data-a="toggleDone">'+(d.status==="done"?"Riapri difetto":"Segna come CHIUSO")+'</button>':'')+
+   '</div>'+
+   '<button class="btn red" data-a="delDefect">Elimina difetto n° '+d.num+'</button>';
+}
+/* ---- plan ---- */
+function viewPlan(){
+  if(!S.proj.plan)return '<div class="card"><div class="empty">Nessuna planimetria caricata.</div><button class="btn sec" data-a="pickplan2">Carica planimetria</button></div>';
+  const miss=S.defects.filter(d=>d.x==null).length;
+  return (miss?'<div class="hint">'+miss+' difetti non ancora posizionati sulla pianta.</div>':'')+
+  '<div class="planwrap" id="pw"><canvas id="pc"></canvas></div>'+
+  '<div class="mut" style="margin-top:10px">Trascina per spostare, pizzica per ingrandire. Questa &egrave; l&rsquo;immagine che finir&agrave; nella sezione 3 del report.</div>'+
+  '<div class="g2" style="margin-top:12px"><button class="btn sec sm" data-a="rotate">Ruota di 90&deg;</button>'+
+  '<button class="btn sec sm" data-a="pickplan2">Sostituisci pianta</button></div>';
+}
+function viewPlace(d){
+  if(!S.proj.plan)return '<div class="card"><div class="empty">Carica prima una planimetria.</div></div>';
+  return '<div class="hint" id="stepHint">1 di 2 &mdash; tocca sulla pianta il punto in cui ti trovi</div>'+
+  '<div class="planwrap" id="pw"><canvas id="pc"></canvas></div>'+
+  '<div class="card" style="margin-top:12px"><label>Direzione di ripresa <span id="angLbl">'+(d.x==null?"—":Math.round(d.angle)+"°")+'</span></label>'+
+  '<input type="range" id="angSl" min="0" max="359" value="'+(d.angle||0)+'" style="padding:0">'+
+  '<div class="g2" style="margin-top:12px"><button class="btn sec sm" data-a="replace">Ricomincia</button><button class="btn sm" data-a="savePlace">Conferma</button></div></div>';
+}
+/* ---- export ---- */
+function viewExport(){
+  const n=S.defects.length,done=S.defects.filter(d=>d.status==="done").length,noPos=S.defects.filter(d=>d.x==null).length,noDesc=S.defects.filter(d=>!d.description).length;
+  return '<div class="card"><h3>'+esc(S.proj.name)+'</h3>'+
+   '<div class="mut">'+n+' difetti &middot; '+done+' chiusi &middot; '+(n-done)+' aperti</div>'+
+   (noPos?'<div class="hint" style="margin-top:10px">'+noPos+' senza posizione sulla pianta</div>':'')+
+   (noDesc?'<div class="hint" style="margin-top:10px">'+noDesc+' senza descrizione</div>':'')+
+   '</div>'+
+   '<div class="card"><h3>1. Pacchetto per il report</h3><div class="mut">Crea uno zip con foto, dati e pianta annotata. Da passare al generatore Word.</div>'+
+   '<button class="btn" data-a="zip">Esporta pacchetto .zip</button></div>'+
+   '<div class="card"><h3>2. Copia di sicurezza</h3><div class="mut">Salva tutte le foto originali nella galleria del telefono (cartella Download).</div>'+
+   '<button class="btn sec" data-a="gallery">Salva tutte in galleria</button></div>'+
+   '<div class="card"><h3>Dati cantiere</h3>'+
+   '<label>Nome</label><input id="f_name" value="'+esc(S.proj.name)+'">'+
+   '<label>Indirizzo</label><input id="f_addr" value="'+esc(S.proj.address||"")+'">'+
+   '<label>Deadline</label><input id="f_due" type="date" value="'+esc(S.proj.due||"")+'">'+
+   '<label>Preparato da</label><input id="f_by" value="'+esc(S.proj.by||"")+'">'+
+   '<button class="btn sec" data-a="saveProjData">Salva dati</button></div>';
+}
+
+/* ============ plan canvas ============ */
+let PL={img:null,scale:1,tx:0,ty:0,mode:false,step:0,tmp:null};
+async function mountPlan(placeMode){
+  const wrap=$("#pw");if(!wrap)return;
+  const c=$("#pc");
+  PL.img=await createImageBitmap(S.proj.plan);
+  PL.mode=placeMode;PL.step=0;
+  const d=placeMode?S.defects.find(x=>x.id===S.did):null;
+  PL.tmp=d&&d.x!=null?{x:d.x,y:d.y,angle:d.angle}:null;
+  if(PL.tmp)PL.step=2;
+  c.width=PL.img.width;c.height=PL.img.height;
+  const fit=Math.min(wrap.clientWidth/PL.img.width,wrap.clientHeight/PL.img.height);
+  PL.scale=fit;PL.tx=(wrap.clientWidth-PL.img.width*fit)/2;PL.ty=(wrap.clientHeight-PL.img.height*fit)/2;
+  applyT();drawPlan(c.getContext("2d"));
+  gestures(wrap,c);
+}
+function applyT(){const c=$("#pc");if(c)c.style.transform="translate("+PL.tx+"px,"+PL.ty+"px) scale("+PL.scale+")";}
+function markerSize(){return Math.max(18,Math.round(Math.max(PL.img.width,PL.img.height)/26));}
+function drawMarker(g,x,y,ang,label,dim){
+  const s=markerSize(),arrow=s*2.4,rad=ang*Math.PI/180;
+  g.save();g.globalAlpha=dim?0.45:1;
+  // arrow
+  g.strokeStyle="#e30613";g.fillStyle="#e30613";g.lineWidth=Math.max(2,s*0.16);g.lineCap="round";
+  const x0=x+Math.cos(rad)*s*0.75,y0=y+Math.sin(rad)*s*0.75;
+  const x1=x+Math.cos(rad)*arrow,y1=y+Math.sin(rad)*arrow;
+  g.beginPath();g.moveTo(x0,y0);g.lineTo(x1,y1);g.stroke();
+  const hw=s*0.42,hl=s*0.78;
+  g.beginPath();g.moveTo(x1,y1);
+  g.lineTo(x1-Math.cos(rad)*hl-Math.cos(rad+Math.PI/2)*hw, y1-Math.sin(rad)*hl-Math.sin(rad+Math.PI/2)*hw);
+  g.lineTo(x1-Math.cos(rad)*hl+Math.cos(rad+Math.PI/2)*hw, y1-Math.sin(rad)*hl+Math.sin(rad+Math.PI/2)*hw);
+  g.closePath();g.fill();
+  // box
+  const bw=s*(String(label).length>1?1.55:1.15),bh=s*1.15;
+  g.fillStyle="#e30613";g.fillRect(x-bw/2,y-bh/2,bw,bh);
+  g.fillStyle="#fff";g.font="800 "+Math.round(s*0.92)+"px Arial, sans-serif";g.textAlign="center";g.textBaseline="middle";
+  g.fillText(String(label),x,y+s*0.03);
+  g.restore();
+}
+function drawPlan(g,forExport){
+  g.clearRect(0,0,PL.img.width,PL.img.height);
+  g.drawImage(PL.img,0,0);
+  for(const d of S.defects){
+    if(d.x==null)continue;
+    if(PL.mode&&d.id===S.did)continue;
+    drawMarker(g,d.x,d.y,d.angle,d.num,PL.mode&&!forExport);
+  }
+  if(PL.mode&&PL.tmp)drawMarker(g,PL.tmp.x,PL.tmp.y,PL.tmp.angle,S.defects.find(x=>x.id===S.did).num);
+}
+function gestures(wrap,c){
+  const pts=new Map();let last=null,moved=0,pinch=null;
+  const toPlan=(cx,cy)=>{const r=wrap.getBoundingClientRect();return{x:(cx-r.left-PL.tx)/PL.scale,y:(cy-r.top-PL.ty)/PL.scale};};
+  wrap.onpointerdown=e=>{wrap.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=0;
+    if(pts.size===2){const a=[...pts.values()];pinch={d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),s:PL.scale,mx:(a[0].x+a[1].x)/2,my:(a[0].y+a[1].y)/2};}
+    last={x:e.clientX,y:e.clientY};};
+  wrap.onpointermove=e=>{
+    if(!pts.has(e.pointerId))return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===2&&pinch){const a=[...pts.values()];const nd=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      const ns=Math.max(0.05,Math.min(12,pinch.s*nd/pinch.d));const r=wrap.getBoundingClientRect();
+      const px=(pinch.mx-r.left-PL.tx)/PL.scale,py=(pinch.my-r.top-PL.ty)/PL.scale;
+      PL.tx=pinch.mx-r.left-px*ns;PL.ty=pinch.my-r.top-py*ns;PL.scale=ns;applyT();moved=99;return;}
+    if(pts.size===1&&last){const dx=e.clientX-last.x,dy=e.clientY-last.y;moved+=Math.abs(dx)+Math.abs(dy);
+      PL.tx+=dx;PL.ty+=dy;last={x:e.clientX,y:e.clientY};applyT();}
+  };
+  wrap.onpointerup=wrap.onpointercancel=e=>{
+    pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(pts.size===0)last=null;
+    if(moved<9&&PL.mode&&pts.size===0){
+      const p=toPlan(e.clientX,e.clientY);
+      if(PL.step===0||PL.step===2){PL.tmp={x:p.x,y:p.y,angle:PL.tmp?PL.tmp.angle:0};PL.step=1;
+        $("#stepHint").innerHTML="2 di 2 &mdash; ora tocca <b>cosa stai inquadrando</b>: la freccia si orienta da sola";}
+      else if(PL.step===1){const a=Math.atan2(p.y-PL.tmp.y,p.x-PL.tmp.x)*180/Math.PI;PL.tmp.angle=(a+360)%360;PL.step=2;
+        $("#stepHint").innerHTML="Fatto. Ritocca con il cursore o <b>Conferma</b>.";$("#angSl").value=Math.round(PL.tmp.angle);$("#angLbl").textContent=Math.round(PL.tmp.angle)+"°";}
+      drawPlan(c.getContext("2d"));
+    }
+  };
+}
+
+/* ============ ZIP (store) ============ */
+const CRCT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=CRCT[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function dosTime(d){return((d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()/2))&0xFFFF;}
+function dosDate(d){return(((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate())&0xFFFF;}
+function makeZip(files){
+  const enc=new TextEncoder(),now=new Date(),chunks=[],central=[];let off=0;
+  for(const f of files){
+    const nm=enc.encode(f.name),data=f.data,crc=crc32(data);
+    const lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(8,0,true);
+    lh.setUint16(10,dosTime(now),true);lh.setUint16(12,dosDate(now),true);lh.setUint32(14,crc,true);
+    lh.setUint32(18,data.length,true);lh.setUint32(22,data.length,true);lh.setUint16(26,nm.length,true);lh.setUint16(28,0,true);
+    chunks.push(new Uint8Array(lh.buffer),nm,data);
+    const ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(10,0,true);
+    ch.setUint16(12,dosTime(now),true);ch.setUint16(14,dosDate(now),true);ch.setUint32(16,crc,true);
+    ch.setUint32(20,data.length,true);ch.setUint32(24,data.length,true);ch.setUint16(28,nm.length,true);
+    ch.setUint32(42,off,true);
+    central.push(new Uint8Array(ch.buffer),nm);
+    off+=30+nm.length+data.length;
+  }
+  let csize=0;for(const c of central)csize+=c.length;
+  const end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true);end.setUint16(8,files.length,true);end.setUint16(10,files.length,true);
+  end.setUint32(12,csize,true);end.setUint32(16,off,true);
+  return new Blob([...chunks,...central,new Uint8Array(end.buffer)],{type:"application/zip"});
+}
+const bytes=b=>b.arrayBuffer().then(a=>new Uint8Array(a));
+
+async function annotatedPlan(){
+  const c=document.createElement("canvas");c.width=PL.img?PL.img.width:0;
+  if(!PL.img)PL.img=await createImageBitmap(S.proj.plan);
+  c.width=PL.img.width;c.height=PL.img.height;
+  const g=c.getContext("2d");const om=PL.mode;PL.mode=false;drawPlan(g,true);PL.mode=om;
+  return await new Promise(r=>c.toBlob(r,"image/png"));
+}
+async function doZip(){
+  if(!S.defects.length){toast("Nessun difetto da esportare");return;}
+  busy("Preparazione pacchetto…");
+  try{
+    const files=[],p=S.proj,rec=[];
+    let i=0;const tot=S.defects.length*2+2;
+    for(const d of S.defects){
+      const r={num:d.num,location:d.location||"",description:d.description||"",supplier:d.supplier||"",
+               dueDate:d.dueDate||p.due||"",status:d.status||"open",x:d.x,y:d.y,angle:d.angle,
+               before:null,after:null,createdAt:d.createdAt,closedAt:d.closedAt||null};
+      if(d.before){const b=await resize(d.before,2200,0.86);r.before="foto/"+pad(d.num)+"_before.jpg";files.push({name:r.before,data:await bytes(b)});}
+      busyPct(++i/tot);
+      if(d.after){const b=await resize(d.after,2200,0.86);r.after="foto/"+pad(d.num)+"_after.jpg";files.push({name:r.after,data:await bytes(b)});}
+      busyPct(++i/tot);
+      rec.push(r);
+    }
+    if(p.plan){
+      const ann=await annotatedPlan();files.push({name:"pianta_annotata.png",data:await bytes(ann)});busyPct(++i/tot);
+      files.push({name:"pianta_base.png",data:await bytes(p.plan)});busyPct(++i/tot);
+    }
+    const meta={app:"punchlist",version:1,exportedAt:new Date().toISOString(),
+      project:{name:p.name,address:p.address||"",deadline:p.due||"",preparedBy:p.by||""},
+      defects:rec};
+    files.push({name:"report.json",data:new TextEncoder().encode(JSON.stringify(meta,null,2))});
+    const zip=makeZip(files);
+    const fn=(p.name||"punchlist").replace(/[^\w\-]+/g,"_")+"_"+today()+".zip";
+    unbusy();
+    await shareOrDownload([new File([zip],fn,{type:"application/zip"})],"Punch List "+p.name);
+  }catch(e){unbusy();toast("Errore export: "+e.message,5000);}
+}
+async function shareOrDownload(files,title){
+  if(navigator.canShare&&navigator.canShare({files})){
+    try{await navigator.share({files,title});return;}catch(e){if(e.name==="AbortError")return;}
+  }
+  for(const f of files){const a=document.createElement("a");a.href=URL.createObjectURL(f);a.download=f.name;a.click();await new Promise(r=>setTimeout(r,350));URL.revokeObjectURL(a.href);}
+  toast("Scaricato in Download");
+}
+async function saveGallery(){
+  const list=[];
+  for(const d of S.defects){
+    const base=(S.proj.name||"PL").replace(/[^\w]+/g,"").slice(0,10).toUpperCase();
+    if(d.before)list.push(new File([d.before],base+"_"+pad(d.num)+"_before.jpg",{type:"image/jpeg"}));
+    if(d.after)list.push(new File([d.after],base+"_"+pad(d.num)+"_after.jpg",{type:"image/jpeg"}));
+  }
+  if(!list.length){toast("Nessuna foto");return;}
+  if(navigator.canShare&&navigator.canShare({files:list})){
+    try{await navigator.share({files:list,title:"Foto punch list"});return;}catch(e){if(e.name==="AbortError")return;}
+  }
+  busy("Salvataggio "+list.length+" foto…");
+  for(let i=0;i<list.length;i++){const a=document.createElement("a");a.href=URL.createObjectURL(list[i]);a.download=list[i].name;a.click();busyPct((i+1)/list.length);await new Promise(r=>setTimeout(r,300));URL.revokeObjectURL(a.href);}
+  unbusy();toast("Foto salvate nella cartella Download");
+}
+
+/* ============ actions ============ */
+let tmpPlan=null;
+function bind(){
+  document.querySelectorAll("[data-a]").forEach(el=>{el.onclick=ev=>{ev.stopPropagation();act(el.dataset.a,el.dataset.id,el);};});
+  const sl=$("#angSl");if(sl)sl.oninput=()=>{if(!PL.tmp)return;PL.tmp.angle=+sl.value;$("#angLbl").textContent=sl.value+"°";drawPlan($("#pc").getContext("2d"));};
+}
+async function act(a,id){
+  const P=S.proj;
+  if(a==="newproj")return go("newproj");
+  if(a==="open")return go("project",{pid:id,tab:"def"});
+  if(a==="defect")return go("defect",{did:id});
+  if(a==="pickplan"){const f=await pickFile(false);if(!f)return;tmpPlan=await resize(f,2600,0.92);const im=$("#planPrev");im.src=url(tmpPlan);im.hidden=false;return;}
+  if(a==="pickplan2"){const f=await pickFile(false);if(!f)return;P.plan=await resize(f,2600,0.92);await dbPut("projects",P);toast("Planimetria aggiornata");return render();}
+  if(a==="rotate"){
+    const bmp=await createImageBitmap(P.plan),oldH=bmp.height;
+    const c=document.createElement("canvas");c.width=bmp.height;c.height=bmp.width;
+    const g=c.getContext("2d");g.translate(c.width,0);g.rotate(Math.PI/2);g.drawImage(bmp,0,0);bmp.close();
+    P.plan=await new Promise(r=>c.toBlob(r,"image/png"));
+    await dbPut("projects",P);
+    for(const d of S.defects){if(d.x==null)continue;const nx=oldH-d.y,ny=d.x;d.x=nx;d.y=ny;d.angle=(d.angle+90)%360;await dbPut("defects",d);}
+    toast("Pianta ruotata");return render();
+  }
+  if(a==="saveproj"){
+    const n=$("#f_name").value.trim();if(!n)return toast("Serve il nome del cantiere");
+    const p={id:uid(),name:n,address:$("#f_addr").value.trim(),due:$("#f_due").value,by:$("#f_by").value.trim(),
+      plan:tmpPlan,locations:DEF_LOC,suppliers:DEF_SUP,createdAt:Date.now()};
+    tmpPlan=null;await dbPut("projects",p);return go("project",{pid:p.id,tab:"def"});
+  }
+  if(a==="saveProjData"){P.name=$("#f_name").value.trim();P.address=$("#f_addr").value.trim();P.due=$("#f_due").value;P.by=$("#f_by").value.trim();await dbPut("projects",P);toast("Salvato");return render();}
+  if(a==="newDefect"){
+    const f=await pickFile(true);if(!f)return;
+    const num=S.defects.reduce((m,d)=>Math.max(m,d.num),0)+1;
+    const d={id:uid(),projectId:P.id,num,before:f,thumb:await resize(f,320,0.7),after:null,
+      location:"",description:"",supplier:"",dueDate:P.due||"",status:"open",x:null,y:null,angle:0,createdAt:Date.now()};
+    await dbPut("defects",d);toast("Difetto n° "+num+" creato");return go("defect",{did:d.id});
+  }
+  const d=S.defects.find(x=>x.id===S.did);
+  if(a==="shootBefore"){const f=await pickFile(true);if(!f)return;d.before=f;d.thumb=await resize(f,320,0.7);await dbPut("defects",d);return render();}
+  if(a==="shootAfter"){const f=await pickFile(true);if(!f)return;d.after=f;if(d.status!=="done"){d.status="done";d.closedAt=Date.now();}await dbPut("defects",d);toast("Correzione registrata, difetto chiuso");return render();}
+  if(a==="toggleDone"){d.status=d.status==="done"?"open":"done";d.closedAt=d.status==="done"?Date.now():null;await dbPut("defects",d);return render();}
+  if(a==="saveDefect"){
+    d.location=$("#f_loc").value.trim().toUpperCase();d.description=$("#f_desc").value.trim();
+    d.supplier=$("#f_sup").value.trim().toUpperCase();d.dueDate=$("#f_due").value;
+    if(d.location&&!(P.locations||[]).includes(d.location)){P.locations=[...(P.locations||[]),d.location];await dbPut("projects",P);}
+    if(d.supplier&&!(P.suppliers||[]).includes(d.supplier)){P.suppliers=[...(P.suppliers||[]),d.supplier];await dbPut("projects",P);}
+    await dbPut("defects",d);toast("Salvato");return go("project",{tab:"def"});
+  }
+  if(a==="place")return go("place");
+  if(a==="replace"){PL.tmp=null;PL.step=0;$("#stepHint").innerHTML="1 di 2 &mdash; tocca sulla pianta il punto in cui ti trovi";drawPlan($("#pc").getContext("2d"));return;}
+  if(a==="savePlace"){if(!PL.tmp)return toast("Tocca prima la tua posizione");d.x=PL.tmp.x;d.y=PL.tmp.y;d.angle=PL.tmp.angle;await dbPut("defects",d);toast("Posizione salvata");return go("defect");}
+  if(a==="delDefect"){if(!confirm("Eliminare il difetto n° "+d.num+"?"))return;await dbDel("defects",d.id);return go("project",{tab:"def"});}
+  if(a==="zip")return doZip();
+  if(a==="gallery")return saveGallery();
+}
+
+/* ============ boot ============ */
+$("#btnBack").onclick=back;
+$("#btnHome").onclick=()=>go("projects");
+$("#fab").onclick=()=>act("newDefect");
+$("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)go("project",{tab:b.dataset.tab});};
+(async()=>{
+  await openDB();
+  if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+  if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+  history.pushState({},"");
+  await go("projects");
+})();
+</script>
+</body>
+</html>
