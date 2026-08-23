@@ -194,6 +194,12 @@ async function render(){
   bind();
 }
 
+/* Numero di versione: si legge in fondo alla schermata iniziale.
+   Serve a sapere con certezza quale codice sta girando sul telefono.
+   Va alzato a ogni modifica caricata su GitHub. */
+const APP_VER="5 — 23.08.2026";
+const verTag='<div class="mut" style="text-align:center;margin:26px 0 4px">versione '+APP_VER+'</div>';
+
 /* ---- projects ---- */
 async function viewProjects(){
   const ps=(await dbAll("projects")).sort((a,b)=>b.createdAt-a.createdAt);
@@ -201,7 +207,7 @@ async function viewProjects(){
   let h="";
   if(installEvt)h+='<button class="btn green" data-a="install">Installa l&rsquo;app sul telefono</button>';
   h+='<button class="btn" data-a="newproj">+ Nuovo cantiere</button>';
-  if(!ps.length)return h+'<div class="empty">Nessun cantiere.<br>Creane uno per iniziare il sopralluogo.</div>';
+  if(!ps.length)return h+'<div class="empty">Nessun cantiere.<br>Creane uno per iniziare il sopralluogo.</div>'+verTag;
   h+='<div style="height:8px"></div>';
   for(const p of ps){
     const ds=all.filter(d=>d.projectId===p.id);
@@ -211,7 +217,7 @@ async function viewProjects(){
        '<div class="txt"><div class="t1">'+esc(p.name)+'</div><div class="t2">'+esc(p.address||"")+'</div>'+
        '<div style="margin-top:5px"><span class="pill '+(open?"open":"done")+'">'+ds.length+' difetti · '+open+' aperti</span></div></div></div>';
   }
-  return h;
+  return h+verTag;
 }
 function viewNewProj(){
   return '<div class="card">'+
@@ -644,7 +650,16 @@ $("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)go("project",{tab
 (async()=>{
   await openDB();
   if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
-  if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+  if("serviceWorker" in navigator){
+    // chiedo a ogni avvio se c'è una versione nuova, altrimenti Chrome può
+    // tenersi quella vecchia per giorni
+    navigator.serviceWorker.register("sw.js").then(reg=>{reg.update().catch(()=>{});}).catch(()=>{});
+    let first=!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      if(!first)toast("Aggiornamento scaricato. Chiudi e riapri l'app per usarlo.",6000);
+      first=false;
+    });
+  }
   history.pushState({},"");
   await go("projects");
 })();
