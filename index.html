@@ -54,13 +54,7 @@ button{font-family:inherit;font-size:16px;cursor:pointer}
 .bar i{display:block;height:100%;background:#dc2626;width:0}
 hr{border:0;border-top:1px solid #e4e4e7;margin:16px 0}
 h3{font-size:15px;margin:0 0 10px}
-/* dettatura vocale + traduzione */
-.fr{display:flex;gap:8px;align-items:flex-start}
-.fr>input,.fr>textarea{flex:1;min-width:0}
-.mic{flex:none;width:54px;height:49px;border-radius:10px;border:1.5px solid #d4d4d8;background:#fff;color:#18181b;display:flex;align-items:center;justify-content:center;padding:0}
-.mic.on{background:#dc2626;border-color:#dc2626;color:#fff;animation:pulse 1.1s infinite}
-@keyframes pulse{50%{opacity:.5}}
-.rechint{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:210;background:#fee2e2;border:1.5px solid #dc2626;color:#b91c1c;padding:12px 14px;border-radius:12px;font-size:14px;font-weight:600;line-height:1.4;word-break:break-word;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+/* traduzione */
 .card.en{border-left:4px solid #1d4ed8}
 .card.en h3 span{font-weight:400;color:#71717a;font-size:13px}
 .seg{display:flex;border:1.5px solid #d4d4d8;border-radius:10px;overflow:hidden;margin-top:6px}
@@ -79,7 +73,6 @@ h3{font-size:15px;margin:0 0 10px}
 </header>
 <main id="main"></main>
 <button class="fab" id="fab" hidden>+</button>
-<div class="rechint" id="recHint" hidden></div>
 
 <script>
 "use strict";
@@ -126,95 +119,6 @@ async function resize(blob,max,q){
   const c=document.createElement("canvas");c.width=w;c.height=h;
   c.getContext("2d").drawImage(bmp,0,0,w,h);bmp.close();
   return await new Promise(r=>c.toBlob(r,"image/jpeg",q||0.85));
-}
-
-/* ============ dettatura vocale ============ */
-/* Usa il riconoscimento vocale di Chrome. Richiede connessione:
-   Android manda l'audio ai server Google e restituisce il testo. */
-const SRec=window.SpeechRecognition||window.webkitSpeechRecognition;
-let REC={sr:null,btn:null,el:null,want:false,base:"",lang:"",fails:0};
-function micSVG(on){
-  return on
-    ?'<svg viewBox="0 0 24 24" width="20" height="20"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>'
-    :'<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>';
-}
-function micBtn(targetId,lang){
-  return '<button class="mic" data-a="mic" data-t="'+targetId+'" data-l="'+(lang||"it-IT")+'" aria-label="Detta">'+micSVG(false)+'</button>';
-}
-function recHint(msg){
-  const h=$("#recHint");if(!h)return;
-  if(msg==null){h.hidden=true;h.textContent="";}else{h.hidden=false;h.textContent=msg;}
-}
-function stopDict(){REC.want=false;if(REC.sr){try{REC.sr.stop()}catch(e){}}}
-function endDict(){
-  if(REC.btn){REC.btn.classList.remove("on");REC.btn.innerHTML=micSVG(false);}
-  if(REC.el&&REC.el.value){REC.el.value=REC.el.value.charAt(0).toUpperCase()+REC.el.value.slice(1);}
-  REC={sr:null,btn:null,el:null,want:false,base:"",lang:"",fails:0};
-  recHint(null);
-}
-/* Unisce due pezzi di parlato tagliando la parte che si sovrappone.
-   "il battiscopa è staccato" + "è staccato dalla parete"
-   -> "il battiscopa è staccato dalla parete"
-   Serve perché il motore di Android, quando riparte, rimastica la coda
-   dell'audio e restituisce parole che aveva già dato. */
-function joinSpeech(a,b){
-  a=(a||"").trim();b=(b||"").trim();
-  if(!a)return b;if(!b)return a;
-  const norm=s=>s.toLowerCase().replace(/[.,;:!?"'`()]/g,"");
-  const A=a.split(/\s+/),B=b.split(/\s+/);
-  for(let k=Math.min(A.length,B.length,12);k>=1;k--){
-    let ok=true;
-    for(let i=0;i<k;i++){if(norm(A[A.length-k+i])!==norm(B[i])){ok=false;break;}}
-    if(ok)return A.concat(B.slice(k)).join(" ");
-  }
-  return a+" "+b;
-}
-/* Una frase per sessione di ascolto (continuous=false): è l'unico modo
-   affidabile su Android, dove la modalità continua rimanda a ripetizione
-   pezzi già trascritti. Il campo non si accoda mai, si riscrive da capo:
-   REC.base (quello che c'era prima) + la frase di questa sessione. */
-function runDict(){
-  const sr=new SRec();
-  sr.lang=REC.lang;sr.continuous=false;sr.interimResults=true;
-  REC.sr=sr;REC.base=REC.el.value.trim();
-  const t0=Date.now();let got=false,over=false;
-  sr.onresult=e=>{
-    if(over||REC.sr!==sr)return;   // ignoro i risultati in ritardo di un motore già chiuso
-    let fin="",itr="";
-    for(let i=0;i<e.results.length;i++){
-      const r=e.results[i],tx=r[0].transcript;
-      if(r.isFinal)fin=joinSpeech(fin,tx);else itr+=tx;
-    }
-    if(fin)got=true;
-    REC.el.value=joinSpeech(REC.base,fin);
-    recHint(itr?"… "+itr:"Sto ascoltando…");
-  };
-  sr.onerror=ev=>{
-    if(ev.error==="no-speech"||ev.error==="aborted")return;
-    REC.want=false;
-    if(ev.error==="not-allowed"||ev.error==="service-not-allowed")toast("Permesso microfono negato. Attivalo dalle impostazioni del sito.",4500);
-    else if(ev.error==="network")toast("La dettatura richiede connessione. Senza rete scrivi a mano.",4500);
-    else toast("Dettatura interrotta: "+ev.error,3500);
-  };
-  sr.onend=()=>{
-    if(over||REC.sr!==sr)return;
-    over=true;
-    // se si chiude subito e a vuoto molte volte di fila, smetto invece di insistere
-    REC.fails=(!got&&Date.now()-t0<400)?REC.fails+1:0;
-    if(REC.want&&REC.fails<6){setTimeout(()=>{if(REC.want&&REC.sr===sr)runDict();},80);return;}
-    if(REC.fails>=6)toast("La dettatura non parte. Controlla il permesso del microfono e la connessione.",4500);
-    endDict();
-  };
-  try{sr.start();}catch(e){REC.want=false;endDict();toast("Impossibile avviare la dettatura");}
-}
-function toggleDict(btn){
-  if(REC.sr){const same=REC.btn===btn;stopDict();if(same)return;setTimeout(()=>toggleDict(btn),400);return;}
-  if(!SRec){toast("Dettatura non disponibile in questo browser. Usa il microfono della tastiera del telefono.",4500);return;}
-  const el=$("#"+btn.dataset.t);if(!el)return;
-  REC={sr:null,btn,el,want:true,base:"",lang:btn.dataset.l||"it-IT",fails:0};
-  btn.classList.add("on");btn.innerHTML=micSVG(true);
-  recHint("Sto ascoltando… parla pure, poi tocca il quadrato rosso per fermare.");
-  runDict();
 }
 
 /* ============ traduzione IT -> EN ============ */
@@ -265,14 +169,14 @@ async function autosave(){
   if(d&&readDefectForm(d))await dbPut("defects",d);
 }
 async function back(){
-  stopDict();await autosave();
+  await autosave();
   if(S.view==="defect"||S.view==="place")go("project");
   else if(S.view==="project"||S.view==="newproj")go("projects");
 }
 
 /* ============ render ============ */
 async function render(){
-  stopDict();freeUrls();
+  freeUrls();
   const m=$("#main"),t=$("#title"),tabs=$("#tabs"),fab=$("#fab"),bb=$("#btnBack"),bh=$("#btnHome");
   tabs.hidden=true;fab.hidden=true;bb.hidden=S.view==="projects";bh.hidden=S.view==="projects";
   if(S.pid&&S.view!=="projects"&&S.view!=="newproj"){S.proj=await dbGet("projects",S.pid);S.defects=(await dbByProj(S.pid)).sort((a,b)=>a.num-b.num);}
@@ -344,9 +248,9 @@ function viewDefect(d){
    '<button class="btn sec sm" data-a="shootBefore" style="margin-top:10px">Riscatta foto difetto</button></div>'+
 
    '<div class="card">'+
-   '<label>Location</label><div class="fr"><input id="f_loc" list="dlLoc" value="'+esc(d.location||"")+'" placeholder="es. VIC ROOM">'+micBtn("f_loc")+'</div>'+opt("dlLoc",loc)+
-   '<label>Titolo</label><div class="fr"><input id="f_title" value="'+esc(d.title||"")+'" placeholder="es. Graffio pannello scagliola">'+micBtn("f_title")+'</div>'+
-   '<label>Descrizione del difetto</label><div class="fr"><textarea id="f_desc" placeholder="Descrivi il problema e cosa serve per risolverlo">'+esc(d.description||"")+'</textarea>'+micBtn("f_desc")+'</div>'+
+   '<label>Location</label><input id="f_loc" list="dlLoc" value="'+esc(d.location||"")+'" placeholder="es. VIC ROOM">'+opt("dlLoc",loc)+
+   '<label>Titolo</label><input id="f_title" value="'+esc(d.title||"")+'" placeholder="es. Graffio pannello scagliola">'+
+   '<label>Descrizione del difetto</label><textarea id="f_desc" placeholder="Descrivi il problema e cosa serve per risolverlo">'+esc(d.description||"")+'</textarea>'+
    '<label>Supplier / Responsibility</label><input id="f_sup" list="dlSup" value="'+esc(d.supplier||"")+'" placeholder="es. POLVERINI">'+opt("dlSup",sup)+
    '<label>Defect completed entro</label><input id="f_due" type="date" value="'+esc(d.dueDate||S.proj.due||"")+'">'+
    '<button class="btn" data-a="saveDefect">Salva</button></div>'+
@@ -354,9 +258,9 @@ function viewDefect(d){
    '<div class="card en"><h3>Versione inglese <span>&mdash; usata nel report se scegli EN</span></h3>'+
    '<button class="btn sec sm" data-a="translate">Traduci dall&rsquo;italiano</button>'+
    '<div class="mut" style="margin-top:8px">Serve connessione. Offline compila a mano o traduci dopo, dalla tab ESPORTA.</div>'+
-   '<label>Location (EN)</label><div class="fr"><input id="f_locEn" value="'+esc(d.locationEn||"")+'" placeholder="es. VIC ROOM">'+micBtn("f_locEn","en-US")+'</div>'+
-   '<label>Title (EN)</label><div class="fr"><input id="f_titleEn" value="'+esc(d.titleEn||"")+'" placeholder="es. Scratch on scagliola panel">'+micBtn("f_titleEn","en-US")+'</div>'+
-   '<label>Description (EN)</label><div class="fr"><textarea id="f_descEn" placeholder="English description for the report">'+esc(d.descriptionEn||"")+'</textarea>'+micBtn("f_descEn","en-US")+'</div>'+
+   '<label>Location (EN)</label><input id="f_locEn" value="'+esc(d.locationEn||"")+'" placeholder="es. VIC ROOM">'+
+   '<label>Title (EN)</label><input id="f_titleEn" value="'+esc(d.titleEn||"")+'" placeholder="es. Scratch on scagliola panel">'+
+   '<label>Description (EN)</label><textarea id="f_descEn" placeholder="English description for the report">'+esc(d.descriptionEn||"")+'</textarea>'+
    '<button class="btn sec" data-a="saveDefect">Salva</button></div>'+
 
    '<div class="card"><h3>Posizione sulla pianta</h3>'+
@@ -625,7 +529,6 @@ function readDefectForm(d){
 }
 /* traduce i tre campi del difetto aperto */
 async function translateDefect(){
-  stopDict();
   const d=S.defects.find(x=>x.id===S.did);if(!d)return;
   readDefectForm(d);
   if(!d.location&&!d.title&&!d.description)return toast("Non c'è ancora niente da tradurre");
@@ -662,7 +565,6 @@ async function translateMissing(){
 
 async function act(a,id,el){
   const P=S.proj;
-  if(a==="mic")return toggleDict(el);
   if(a==="translate")return translateDefect();
   if(a==="translateMissing")return translateMissing();
   if(a==="lang"){P.lang=el.dataset.l;await dbPut("projects",P);return render();}
@@ -707,7 +609,7 @@ async function act(a,id,el){
   if(a==="shootAfter"){const f=await pickFile(true);if(!f)return;d.after=f;if(d.status!=="done"){d.status="done";d.closedAt=Date.now();}await dbPut("defects",d);toast("Correzione registrata, difetto chiuso");return render();}
   if(a==="toggleDone"){d.status=d.status==="done"?"open":"done";d.closedAt=d.status==="done"?Date.now():null;await dbPut("defects",d);return render();}
   if(a==="saveDefect"){
-    stopDict();readDefectForm(d);
+    readDefectForm(d);
     if(d.location&&!(P.locations||[]).includes(d.location)){P.locations=[...(P.locations||[]),d.location];await dbPut("projects",P);}
     if(d.supplier&&!(P.suppliers||[]).includes(d.supplier)){P.suppliers=[...(P.suppliers||[]),d.supplier];await dbPut("projects",P);}
     await dbPut("defects",d);toast("Salvato");return go("project",{tab:"def"});
@@ -736,7 +638,7 @@ window.addEventListener("appinstalled",()=>{installEvt=null;toast("App installat
 
 /* ============ boot ============ */
 $("#btnBack").onclick=back;
-$("#btnHome").onclick=async()=>{stopDict();await autosave();go("projects");};
+$("#btnHome").onclick=async()=>{await autosave();go("projects");};
 $("#fab").onclick=()=>act("newDefect");
 $("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)go("project",{tab:b.dataset.tab});};
 (async()=>{
