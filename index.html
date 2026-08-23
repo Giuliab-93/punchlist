@@ -132,7 +132,7 @@ async function resize(blob,max,q){
 /* Usa il riconoscimento vocale di Chrome. Richiede connessione:
    Android manda l'audio ai server Google e restituisce il testo. */
 const SRec=window.SpeechRecognition||window.webkitSpeechRecognition;
-let REC={sr:null,btn:null,el:null,want:false};
+let REC={sr:null,btn:null,el:null,want:false,base:"",lang:"",fails:0};
 function micSVG(on){
   return on
     ?'<svg viewBox="0 0 24 24" width="20" height="20"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>'
@@ -149,25 +149,30 @@ function stopDict(){REC.want=false;if(REC.sr){try{REC.sr.stop()}catch(e){}}}
 function endDict(){
   if(REC.btn){REC.btn.classList.remove("on");REC.btn.innerHTML=micSVG(false);}
   if(REC.el&&REC.el.value){REC.el.value=REC.el.value.charAt(0).toUpperCase()+REC.el.value.slice(1);}
-  REC={sr:null,btn:null,el:null,want:false};
+  REC={sr:null,btn:null,el:null,want:false,base:"",lang:"",fails:0};
   recHint(null);
 }
-function toggleDict(btn){
-  if(REC.sr){const same=REC.btn===btn;stopDict();if(same)return;setTimeout(()=>toggleDict(btn),350);return;}
-  if(!SRec){toast("Dettatura non disponibile in questo browser. Usa il microfono della tastiera del telefono.",4500);return;}
-  const el=$("#"+btn.dataset.t);if(!el)return;
+/* Chrome su Android rimanda più volte gli stessi pezzi di frase.
+   Perciò il campo non si accoda mai: si riscrive ogni volta da capo,
+   partendo dal testo che c'era prima (REC.base) più tutto il parlato
+   di questa sessione di ascolto. Ripetere un risultato non fa danni. */
+function runDict(){
   const sr=new SRec();
-  sr.lang=btn.dataset.l||"it-IT";sr.continuous=true;sr.interimResults=true;
-  REC={sr,btn,el,want:true};
-  btn.classList.add("on");btn.innerHTML=micSVG(true);
-  recHint("Sto ascoltando… parla pure, poi tocca il quadrato rosso per fermare.");
+  sr.lang=REC.lang;sr.continuous=true;sr.interimResults=true;
+  REC.sr=sr;REC.base=REC.el.value.trim();
+  const t0=Date.now();let got=false,over=false;
   sr.onresult=e=>{
-    let fin="",itr="";
-    for(let i=e.resultIndex;i<e.results.length;i++){
-      const r=e.results[i];
-      if(r.isFinal)fin+=r[0].transcript+" ";else itr+=r[0].transcript;
+    if(over||REC.sr!==sr)return;   // ignoro i risultati in ritardo di un motore già chiuso
+    let fin="",itr="",prev="";
+    for(let i=0;i<e.results.length;i++){
+      const r=e.results[i],tx=r[0].transcript;
+      if(!r.isFinal){itr+=tx;continue;}
+      const k=tx.trim();
+      if(k&&k===prev)continue;   // stessa frase due volte di fila: è il motore che sbava
+      prev=k;fin+=tx+" ";
     }
-    if(fin)el.value=(el.value.trim()+" "+fin.trim()).trim();
+    if(fin)got=true;
+    REC.el.value=(REC.base+" "+fin).replace(/\s+/g," ").trim();
     recHint(itr?"… "+itr:"Sto ascoltando…");
   };
   sr.onerror=ev=>{
@@ -178,10 +183,24 @@ function toggleDict(btn){
     else toast("Dettatura interrotta: "+ev.error,3500);
   };
   sr.onend=()=>{
-    if(REC.want&&REC.sr===sr){try{sr.start();return;}catch(e){}}
+    if(over||REC.sr!==sr)return;
+    over=true;
+    // se si chiude subito e a vuoto più volte di fila, smetto invece di insistere
+    REC.fails=(!got&&Date.now()-t0<800)?REC.fails+1:0;
+    if(REC.want&&REC.fails<4){setTimeout(()=>{if(REC.want&&REC.sr===sr)runDict();},120);return;}
+    if(REC.fails>=4)toast("La dettatura non parte. Controlla il permesso del microfono e la connessione.",4500);
     endDict();
   };
-  try{sr.start();}catch(e){endDict();toast("Impossibile avviare la dettatura");}
+  try{sr.start();}catch(e){REC.want=false;endDict();toast("Impossibile avviare la dettatura");}
+}
+function toggleDict(btn){
+  if(REC.sr){const same=REC.btn===btn;stopDict();if(same)return;setTimeout(()=>toggleDict(btn),400);return;}
+  if(!SRec){toast("Dettatura non disponibile in questo browser. Usa il microfono della tastiera del telefono.",4500);return;}
+  const el=$("#"+btn.dataset.t);if(!el)return;
+  REC={sr:null,btn,el,want:true,base:"",lang:btn.dataset.l||"it-IT",fails:0};
+  btn.classList.add("on");btn.innerHTML=micSVG(true);
+  recHint("Sto ascoltando… parla pure, poi tocca il quadrato rosso per fermare.");
+  runDict();
 }
 
 /* ============ traduzione IT -> EN ============ */
