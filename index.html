@@ -152,27 +152,41 @@ function endDict(){
   REC={sr:null,btn:null,el:null,want:false,base:"",lang:"",fails:0};
   recHint(null);
 }
-/* Chrome su Android rimanda più volte gli stessi pezzi di frase.
-   Perciò il campo non si accoda mai: si riscrive ogni volta da capo,
-   partendo dal testo che c'era prima (REC.base) più tutto il parlato
-   di questa sessione di ascolto. Ripetere un risultato non fa danni. */
+/* Unisce due pezzi di parlato tagliando la parte che si sovrappone.
+   "il battiscopa è staccato" + "è staccato dalla parete"
+   -> "il battiscopa è staccato dalla parete"
+   Serve perché il motore di Android, quando riparte, rimastica la coda
+   dell'audio e restituisce parole che aveva già dato. */
+function joinSpeech(a,b){
+  a=(a||"").trim();b=(b||"").trim();
+  if(!a)return b;if(!b)return a;
+  const norm=s=>s.toLowerCase().replace(/[.,;:!?"'`()]/g,"");
+  const A=a.split(/\s+/),B=b.split(/\s+/);
+  for(let k=Math.min(A.length,B.length,12);k>=1;k--){
+    let ok=true;
+    for(let i=0;i<k;i++){if(norm(A[A.length-k+i])!==norm(B[i])){ok=false;break;}}
+    if(ok)return A.concat(B.slice(k)).join(" ");
+  }
+  return a+" "+b;
+}
+/* Una frase per sessione di ascolto (continuous=false): è l'unico modo
+   affidabile su Android, dove la modalità continua rimanda a ripetizione
+   pezzi già trascritti. Il campo non si accoda mai, si riscrive da capo:
+   REC.base (quello che c'era prima) + la frase di questa sessione. */
 function runDict(){
   const sr=new SRec();
-  sr.lang=REC.lang;sr.continuous=true;sr.interimResults=true;
+  sr.lang=REC.lang;sr.continuous=false;sr.interimResults=true;
   REC.sr=sr;REC.base=REC.el.value.trim();
   const t0=Date.now();let got=false,over=false;
   sr.onresult=e=>{
     if(over||REC.sr!==sr)return;   // ignoro i risultati in ritardo di un motore già chiuso
-    let fin="",itr="",prev="";
+    let fin="",itr="";
     for(let i=0;i<e.results.length;i++){
       const r=e.results[i],tx=r[0].transcript;
-      if(!r.isFinal){itr+=tx;continue;}
-      const k=tx.trim();
-      if(k&&k===prev)continue;   // stessa frase due volte di fila: è il motore che sbava
-      prev=k;fin+=tx+" ";
+      if(r.isFinal)fin=joinSpeech(fin,tx);else itr+=tx;
     }
     if(fin)got=true;
-    REC.el.value=(REC.base+" "+fin).replace(/\s+/g," ").trim();
+    REC.el.value=joinSpeech(REC.base,fin);
     recHint(itr?"… "+itr:"Sto ascoltando…");
   };
   sr.onerror=ev=>{
@@ -185,10 +199,10 @@ function runDict(){
   sr.onend=()=>{
     if(over||REC.sr!==sr)return;
     over=true;
-    // se si chiude subito e a vuoto più volte di fila, smetto invece di insistere
-    REC.fails=(!got&&Date.now()-t0<800)?REC.fails+1:0;
-    if(REC.want&&REC.fails<4){setTimeout(()=>{if(REC.want&&REC.sr===sr)runDict();},120);return;}
-    if(REC.fails>=4)toast("La dettatura non parte. Controlla il permesso del microfono e la connessione.",4500);
+    // se si chiude subito e a vuoto molte volte di fila, smetto invece di insistere
+    REC.fails=(!got&&Date.now()-t0<400)?REC.fails+1:0;
+    if(REC.want&&REC.fails<6){setTimeout(()=>{if(REC.want&&REC.sr===sr)runDict();},80);return;}
+    if(REC.fails>=6)toast("La dettatura non parte. Controlla il permesso del microfono e la connessione.",4500);
     endDict();
   };
   try{sr.start();}catch(e){REC.want=false;endDict();toast("Impossibile avviare la dettatura");}
