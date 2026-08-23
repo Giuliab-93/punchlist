@@ -1,4 +1,4 @@
-const CACHE = "punchlist-v3";
+const CACHE = "punchlist-v4";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -17,6 +17,8 @@ self.addEventListener("activate", e => {
 // online prendi sempre la versione aggiornata, in cantiere senza campo funziona lo stesso.
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
+  // Le chiamate ai servizi di traduzione non passano dalla cache dell'app.
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     fetch(e.request)
       .then(res => {

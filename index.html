@@ -54,6 +54,18 @@ button{font-family:inherit;font-size:16px;cursor:pointer}
 .bar i{display:block;height:100%;background:#dc2626;width:0}
 hr{border:0;border-top:1px solid #e4e4e7;margin:16px 0}
 h3{font-size:15px;margin:0 0 10px}
+/* dettatura vocale + traduzione */
+.fr{display:flex;gap:8px;align-items:flex-start}
+.fr>input,.fr>textarea{flex:1;min-width:0}
+.mic{flex:none;width:54px;height:49px;border-radius:10px;border:1.5px solid #d4d4d8;background:#fff;color:#18181b;display:flex;align-items:center;justify-content:center;padding:0}
+.mic.on{background:#dc2626;border-color:#dc2626;color:#fff;animation:pulse 1.1s infinite}
+@keyframes pulse{50%{opacity:.5}}
+.rechint{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:210;background:#fee2e2;border:1.5px solid #dc2626;color:#b91c1c;padding:12px 14px;border-radius:12px;font-size:14px;font-weight:600;line-height:1.4;word-break:break-word;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.card.en{border-left:4px solid #1d4ed8}
+.card.en h3 span{font-weight:400;color:#71717a;font-size:13px}
+.seg{display:flex;border:1.5px solid #d4d4d8;border-radius:10px;overflow:hidden;margin-top:6px}
+.seg button{flex:1;background:#fff;border:0;padding:13px 6px;font-weight:700;font-size:14px;color:#52525b}
+.seg button.on{background:#1a1a1a;color:#fff}
 </style>
 </head>
 <body>
@@ -67,6 +79,7 @@ h3{font-size:15px;margin:0 0 10px}
 </header>
 <main id="main"></main>
 <button class="fab" id="fab" hidden>+</button>
+<div class="rechint" id="recHint" hidden></div>
 
 <script>
 "use strict";
@@ -115,6 +128,95 @@ async function resize(blob,max,q){
   return await new Promise(r=>c.toBlob(r,"image/jpeg",q||0.85));
 }
 
+/* ============ dettatura vocale ============ */
+/* Usa il riconoscimento vocale di Chrome. Richiede connessione:
+   Android manda l'audio ai server Google e restituisce il testo. */
+const SRec=window.SpeechRecognition||window.webkitSpeechRecognition;
+let REC={sr:null,btn:null,el:null,want:false};
+function micSVG(on){
+  return on
+    ?'<svg viewBox="0 0 24 24" width="20" height="20"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></svg>'
+    :'<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>';
+}
+function micBtn(targetId,lang){
+  return '<button class="mic" data-a="mic" data-t="'+targetId+'" data-l="'+(lang||"it-IT")+'" aria-label="Detta">'+micSVG(false)+'</button>';
+}
+function recHint(msg){
+  const h=$("#recHint");if(!h)return;
+  if(msg==null){h.hidden=true;h.textContent="";}else{h.hidden=false;h.textContent=msg;}
+}
+function stopDict(){REC.want=false;if(REC.sr){try{REC.sr.stop()}catch(e){}}}
+function endDict(){
+  if(REC.btn){REC.btn.classList.remove("on");REC.btn.innerHTML=micSVG(false);}
+  if(REC.el&&REC.el.value){REC.el.value=REC.el.value.charAt(0).toUpperCase()+REC.el.value.slice(1);}
+  REC={sr:null,btn:null,el:null,want:false};
+  recHint(null);
+}
+function toggleDict(btn){
+  if(REC.sr){const same=REC.btn===btn;stopDict();if(same)return;setTimeout(()=>toggleDict(btn),350);return;}
+  if(!SRec){toast("Dettatura non disponibile in questo browser. Usa il microfono della tastiera del telefono.",4500);return;}
+  const el=$("#"+btn.dataset.t);if(!el)return;
+  const sr=new SRec();
+  sr.lang=btn.dataset.l||"it-IT";sr.continuous=true;sr.interimResults=true;
+  REC={sr,btn,el,want:true};
+  btn.classList.add("on");btn.innerHTML=micSVG(true);
+  recHint("Sto ascoltando… parla pure, poi tocca il quadrato rosso per fermare.");
+  sr.onresult=e=>{
+    let fin="",itr="";
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const r=e.results[i];
+      if(r.isFinal)fin+=r[0].transcript+" ";else itr+=r[0].transcript;
+    }
+    if(fin)el.value=(el.value.trim()+" "+fin.trim()).trim();
+    recHint(itr?"… "+itr:"Sto ascoltando…");
+  };
+  sr.onerror=ev=>{
+    if(ev.error==="no-speech"||ev.error==="aborted")return;
+    REC.want=false;
+    if(ev.error==="not-allowed"||ev.error==="service-not-allowed")toast("Permesso microfono negato. Attivalo dalle impostazioni del sito.",4500);
+    else if(ev.error==="network")toast("La dettatura richiede connessione. Senza rete scrivi a mano.",4500);
+    else toast("Dettatura interrotta: "+ev.error,3500);
+  };
+  sr.onend=()=>{
+    if(REC.want&&REC.sr===sr){try{sr.start();return;}catch(e){}}
+    endDict();
+  };
+  try{sr.start();}catch(e){endDict();toast("Impossibile avviare la dettatura");}
+}
+
+/* ============ traduzione IT -> EN ============ */
+/* Termini di cantiere che le traduzioni automatiche sbagliano:
+   li riscrivo in italiano non ambiguo PRIMA di tradurre. Aggiungine pure. */
+const GLOSS=[
+  [/\bfughe\b/gi,"stuccature dei giunti"],
+  [/\bfuga\b/gi,"stuccatura del giunto"],
+  [/\bsgusci\b/gi,"raccordi curvi a parete"],
+  [/\bsguscio\b/gi,"raccordo curvo a parete"],
+  [/\briprese\s+di\s+tinta\b/gi,"riverniciature parziali"],
+  [/\bripresa\s+di\s+tinta\b/gi,"riverniciatura parziale"]
+];
+const normIT=t=>GLOSS.reduce((s,[re,v])=>s.replace(re,v),t);
+function fetchT(u,ms){
+  const c=new AbortController(),id=setTimeout(()=>c.abort(),ms||9000);
+  return fetch(u,{signal:c.signal}).finally(()=>clearTimeout(id));
+}
+/* Due servizi gratuiti in sequenza: se il primo non risponde si passa al secondo. */
+async function it2en(txt){
+  const t=(txt||"").trim();if(!t)return "";
+  if(!navigator.onLine)throw new Error("sei offline");
+  const src=normIT(t);
+  try{
+    const r=await fetchT("https://translate.googleapis.com/translate_a/single?client=gtx&sl=it&tl=en&dt=t&q="+encodeURIComponent(src));
+    if(r.ok){const j=await r.json();const o=(j[0]||[]).map(s=>s[0]).join("").trim();if(o)return o;}
+  }catch(e){}
+  try{
+    const r=await fetchT("https://api.mymemory.translated.net/get?langpair=it|en&q="+encodeURIComponent(src.slice(0,480)));
+    if(r.ok){const j=await r.json();const o=((j.responseData||{}).translatedText||"").trim();
+      if(o&&!/MYMEMORY WARNING/i.test(o))return o;}
+  }catch(e){}
+  throw new Error(navigator.onLine?"servizio di traduzione non raggiungibile":"sei offline");
+}
+
 /* ============ state ============ */
 let S={view:"projects",tab:"def",pid:null,proj:null,defects:[],did:null};
 const DEF_LOC=["VIC ROOM","SALES AREA","ENTRANCE","BOH 1","BOH 2","WINDOW","FACADE","MEP ROOM","CEILING","FLOORING"];
@@ -123,14 +225,21 @@ const DEF_SUP=["POLVERINI","GENERAL CONTRACTOR","MILLWORKER","MEP CONTRACTOR","L
 /* ============ router ============ */
 async function go(v,opt){S.view=v;Object.assign(S,opt||{});await render();window.scrollTo(0,0);}
 window.addEventListener("popstate",()=>{if(S.view!=="projects"){back();history.pushState({},"");}});
-function back(){
+/* niente testo perso: uscendo dalla scheda il difetto si salva da solo */
+async function autosave(){
+  if(S.view!=="defect")return;
+  const d=S.defects.find(x=>x.id===S.did);
+  if(d&&readDefectForm(d))await dbPut("defects",d);
+}
+async function back(){
+  stopDict();await autosave();
   if(S.view==="defect"||S.view==="place")go("project");
   else if(S.view==="project"||S.view==="newproj")go("projects");
 }
 
 /* ============ render ============ */
 async function render(){
-  freeUrls();
+  stopDict();freeUrls();
   const m=$("#main"),t=$("#title"),tabs=$("#tabs"),fab=$("#fab"),bb=$("#btnBack"),bh=$("#btnHome");
   tabs.hidden=true;fab.hidden=true;bb.hidden=S.view==="projects";bh.hidden=S.view==="projects";
   if(S.pid&&S.view!=="projects"&&S.view!=="newproj"){S.proj=await dbGet("projects",S.pid);S.defects=(await dbByProj(S.pid)).sort((a,b)=>a.num-b.num);}
@@ -202,12 +311,20 @@ function viewDefect(d){
    '<button class="btn sec sm" data-a="shootBefore" style="margin-top:10px">Riscatta foto difetto</button></div>'+
 
    '<div class="card">'+
-   '<label>Location</label><input id="f_loc" list="dlLoc" value="'+esc(d.location||"")+'" placeholder="es. VIC ROOM">'+opt("dlLoc",loc)+
-   '<label>Titolo</label><input id="f_title" value="'+esc(d.title||"")+'" placeholder="es. Graffio pannello scagliola">'+
-   '<label>Descrizione del difetto</label><textarea id="f_desc" placeholder="Descrivi il problema e cosa serve per risolverlo">'+esc(d.description||"")+'</textarea>'+
+   '<label>Location</label><div class="fr"><input id="f_loc" list="dlLoc" value="'+esc(d.location||"")+'" placeholder="es. VIC ROOM">'+micBtn("f_loc")+'</div>'+opt("dlLoc",loc)+
+   '<label>Titolo</label><div class="fr"><input id="f_title" value="'+esc(d.title||"")+'" placeholder="es. Graffio pannello scagliola">'+micBtn("f_title")+'</div>'+
+   '<label>Descrizione del difetto</label><div class="fr"><textarea id="f_desc" placeholder="Descrivi il problema e cosa serve per risolverlo">'+esc(d.description||"")+'</textarea>'+micBtn("f_desc")+'</div>'+
    '<label>Supplier / Responsibility</label><input id="f_sup" list="dlSup" value="'+esc(d.supplier||"")+'" placeholder="es. POLVERINI">'+opt("dlSup",sup)+
    '<label>Defect completed entro</label><input id="f_due" type="date" value="'+esc(d.dueDate||S.proj.due||"")+'">'+
    '<button class="btn" data-a="saveDefect">Salva</button></div>'+
+
+   '<div class="card en"><h3>Versione inglese <span>&mdash; usata nel report se scegli EN</span></h3>'+
+   '<button class="btn sec sm" data-a="translate">Traduci dall&rsquo;italiano</button>'+
+   '<div class="mut" style="margin-top:8px">Serve connessione. Offline compila a mano o traduci dopo, dalla tab ESPORTA.</div>'+
+   '<label>Location (EN)</label><div class="fr"><input id="f_locEn" value="'+esc(d.locationEn||"")+'" placeholder="es. VIC ROOM">'+micBtn("f_locEn","en-US")+'</div>'+
+   '<label>Title (EN)</label><div class="fr"><input id="f_titleEn" value="'+esc(d.titleEn||"")+'" placeholder="es. Scratch on scagliola panel">'+micBtn("f_titleEn","en-US")+'</div>'+
+   '<label>Description (EN)</label><div class="fr"><textarea id="f_descEn" placeholder="English description for the report">'+esc(d.descriptionEn||"")+'</textarea>'+micBtn("f_descEn","en-US")+'</div>'+
+   '<button class="btn sec" data-a="saveDefect">Salva</button></div>'+
 
    '<div class="card"><h3>Posizione sulla pianta</h3>'+
    (d.x==null?'<div class="mut">Non ancora posizionato.</div>':'<div class="mut">Posizionato &middot; '+(d.angle==null?"solo numero, senza freccia":"direzione "+Math.round(d.angle)+"&deg;")+'</div>')+
@@ -244,14 +361,26 @@ function viewPlace(d){
   '<div class="g2" style="margin-top:12px"><button class="btn sec sm" data-a="replace">Ricomincia</button><button class="btn sm" data-a="savePlace">Conferma</button></div></div>';
 }
 /* ---- export ---- */
+function missingEn(){return S.defects.filter(d=>(d.description&&!d.descriptionEn)||(d.title&&!d.titleEn)||(d.location&&!d.locationEn));}
 function viewExport(){
   const n=S.defects.length,done=S.defects.filter(d=>d.status==="done").length,noPos=S.defects.filter(d=>d.x==null).length,noDesc=S.defects.filter(d=>!d.description).length;
+  const lang=S.proj.lang||"it",miss=missingEn().length;
   return '<div class="card"><h3>'+esc(S.proj.name)+'</h3>'+
    '<div class="mut">'+n+' difetti &middot; '+done+' chiusi &middot; '+(n-done)+' aperti</div>'+
    (noPos?'<div class="hint" style="margin-top:10px">'+noPos+' senza posizione sulla pianta</div>':'')+
    (noDesc?'<div class="hint" style="margin-top:10px">'+noDesc+' senza descrizione</div>':'')+
    '</div>'+
-   '<div class="card"><h3>1. Pacchetto per il report</h3><div class="mut">Crea uno zip con foto, dati e pianta annotata. Da passare al generatore Word.</div>'+
+   '<div class="card"><h3>1. Pacchetto per il report</h3>'+
+   '<label style="margin-top:0">Lingua del report</label>'+
+   '<div class="seg"><button data-a="lang" data-l="it" class="'+(lang==="it"?"on":"")+'">ITALIANO</button>'+
+   '<button data-a="lang" data-l="en" class="'+(lang==="en"?"on":"")+'">ENGLISH</button></div>'+
+   '<div class="mut" style="margin-top:8px">'+(lang==="en"
+     ? "Il Word userà i campi inglesi. Dove mancano ricade sull&rsquo;italiano."
+     : "Il Word userà i testi italiani, come sempre.")+'</div>'+
+   (lang==="en"&&miss?'<div class="hint" style="margin-top:10px">'+miss+' difetti senza versione inglese</div>'+
+     '<button class="btn sec sm" data-a="translateMissing" style="margin-top:8px">Traduci i '+miss+' mancanti</button>':'')+
+   (lang==="en"&&!miss&&n?'<div class="mut" style="margin-top:8px;color:#15803d;font-weight:600">Tutti i difetti hanno la versione inglese.</div>':'')+
+   '<div class="mut" style="margin-top:10px">Crea uno zip con foto, dati e pianta annotata. Da passare al generatore Word.</div>'+
    '<button class="btn" data-a="zip">Esporta pacchetto .zip</button></div>'+
    '<div class="card"><h3>2. Copia di sicurezza</h3><div class="mut">Scarica tutte le foto originali nella cartella <b>Download</b> del telefono, visibile in Google Foto come album. Al primo utilizzo Chrome chiede il permesso di scaricare pi&ugrave; file: consenti.</div>'+
    '<button class="btn sec" data-a="gallery">Salva tutte in galleria</button></div>'+
@@ -389,7 +518,8 @@ async function doZip(){
     const files=[],p=S.proj,rec=[];
     let i=0;const tot=S.defects.length*2+2;
     for(const d of S.defects){
-      const r={num:d.num,location:d.location||"",title:d.title||"",description:d.description||"",supplier:d.supplier||"",
+      const r={num:d.num,location:d.location||"",title:d.title||"",description:d.description||"",
+               locationEn:d.locationEn||"",titleEn:d.titleEn||"",descriptionEn:d.descriptionEn||"",supplier:d.supplier||"",
                dueDate:d.dueDate||p.due||"",status:d.status||"open",x:d.x,y:d.y,angle:d.angle,
                before:null,after:null,createdAt:d.createdAt,closedAt:d.closedAt||null};
       if(d.before){const b=await resize(d.before,2200,0.86);r.before="foto/"+pad(d.num)+"_before.jpg";files.push({name:r.before,data:await bytes(b)});}
@@ -402,7 +532,8 @@ async function doZip(){
       const ann=await annotatedPlan();files.push({name:"pianta_annotata.png",data:await bytes(ann)});busyPct(++i/tot);
       files.push({name:"pianta_base.png",data:await bytes(p.plan)});busyPct(++i/tot);
     }
-    const meta={app:"punchlist",version:1,exportedAt:new Date().toISOString(),
+    const meta={app:"punchlist",version:2,exportedAt:new Date().toISOString(),
+      reportLang:p.lang||"it",
       project:{name:p.name,address:p.address||"",deadline:p.due||"",preparedBy:p.by||""},
       defects:rec};
     files.push({name:"report.json",data:new TextEncoder().encode(JSON.stringify(meta,null,2))});
@@ -446,8 +577,62 @@ function bind(){
     mk.onchange=()=>{dbPut("projects",S.proj);};
   }
 }
-async function act(a,id){
+/* raccoglie i campi del difetto dal form, senza salvare */
+function readDefectForm(d){
+  if(!$("#f_loc"))return false;
+  d.location=$("#f_loc").value.trim().toUpperCase();
+  d.title=$("#f_title").value.trim();
+  d.description=$("#f_desc").value.trim();
+  d.locationEn=$("#f_locEn").value.trim().toUpperCase();
+  d.titleEn=$("#f_titleEn").value.trim();
+  d.descriptionEn=$("#f_descEn").value.trim();
+  d.supplier=$("#f_sup").value.trim().toUpperCase();
+  d.dueDate=$("#f_due").value;
+  return true;
+}
+/* traduce i tre campi del difetto aperto */
+async function translateDefect(){
+  stopDict();
+  const d=S.defects.find(x=>x.id===S.did);if(!d)return;
+  readDefectForm(d);
+  if(!d.location&&!d.title&&!d.description)return toast("Non c'è ancora niente da tradurre");
+  busy("Traduzione in corso…");
+  try{
+    let i=0;const jobs=[["location","locationEn"],["title","titleEn"],["description","descriptionEn"]];
+    for(const [it,en] of jobs){
+      if(d[it])d[en]=await it2en(d[it]);
+      busyPct(++i/jobs.length);
+    }
+    if(d.locationEn)d.locationEn=d.locationEn.toUpperCase();
+    await dbPut("defects",d);unbusy();toast("Tradotto e salvato — controlla il testo inglese");
+    return render();
+  }catch(e){unbusy();toast("Traduzione non riuscita: "+e.message,4500);}
+}
+/* traduce tutti i difetti a cui manca l'inglese */
+async function translateMissing(){
+  const list=missingEn();if(!list.length)return toast("Non manca nulla");
+  busy("Traduzione di "+list.length+" difetti…");
+  let ko=0,i=0;
+  for(const d of list){
+    try{
+      if(d.location&&!d.locationEn)d.locationEn=(await it2en(d.location)).toUpperCase();
+      if(d.title&&!d.titleEn)d.titleEn=await it2en(d.title);
+      if(d.description&&!d.descriptionEn)d.descriptionEn=await it2en(d.description);
+      await dbPut("defects",d);
+    }catch(e){ko++;}
+    busyPct(++i/list.length);
+  }
+  unbusy();
+  toast(ko?("Tradotti "+(list.length-ko)+" su "+list.length+" — riprova con la rete"):"Tradotti tutti i "+list.length+" difetti",4000);
+  return render();
+}
+
+async function act(a,id,el){
   const P=S.proj;
+  if(a==="mic")return toggleDict(el);
+  if(a==="translate")return translateDefect();
+  if(a==="translateMissing")return translateMissing();
+  if(a==="lang"){P.lang=el.dataset.l;await dbPut("projects",P);return render();}
   if(a==="install"){
     if(!installEvt)return toast("Usa il menu ⋮ di Chrome → Installa app");
     installEvt.prompt();const r=await installEvt.userChoice;installEvt=null;
@@ -478,16 +663,18 @@ async function act(a,id){
     const f=await pickFile(true);if(!f)return;
     const num=S.defects.reduce((m,d)=>Math.max(m,d.num),0)+1;
     const d={id:uid(),projectId:P.id,num,before:f,thumb:await resize(f,320,0.7),after:null,
-      location:"",title:"",description:"",supplier:"",dueDate:P.due||"",status:"open",x:null,y:null,angle:0,createdAt:Date.now()};
+      location:"",title:"",description:"",locationEn:"",titleEn:"",descriptionEn:"",
+      supplier:"",dueDate:P.due||"",status:"open",x:null,y:null,angle:0,createdAt:Date.now()};
     await dbPut("defects",d);toast("Difetto n° "+num+" creato");return go("defect",{did:d.id});
   }
   const d=S.defects.find(x=>x.id===S.did);
+  // qualunque azione dalla scheda difetto conserva prima quello che c'è nei campi
+  if(S.view==="defect"&&d&&a!=="delDefect"&&readDefectForm(d))await dbPut("defects",d);
   if(a==="shootBefore"){const f=await pickFile(true);if(!f)return;d.before=f;d.thumb=await resize(f,320,0.7);await dbPut("defects",d);return render();}
   if(a==="shootAfter"){const f=await pickFile(true);if(!f)return;d.after=f;if(d.status!=="done"){d.status="done";d.closedAt=Date.now();}await dbPut("defects",d);toast("Correzione registrata, difetto chiuso");return render();}
   if(a==="toggleDone"){d.status=d.status==="done"?"open":"done";d.closedAt=d.status==="done"?Date.now():null;await dbPut("defects",d);return render();}
   if(a==="saveDefect"){
-    d.location=$("#f_loc").value.trim().toUpperCase();d.title=$("#f_title").value.trim();d.description=$("#f_desc").value.trim();
-    d.supplier=$("#f_sup").value.trim().toUpperCase();d.dueDate=$("#f_due").value;
+    stopDict();readDefectForm(d);
     if(d.location&&!(P.locations||[]).includes(d.location)){P.locations=[...(P.locations||[]),d.location];await dbPut("projects",P);}
     if(d.supplier&&!(P.suppliers||[]).includes(d.supplier)){P.suppliers=[...(P.suppliers||[]),d.supplier];await dbPut("projects",P);}
     await dbPut("defects",d);toast("Salvato");return go("project",{tab:"def"});
@@ -516,7 +703,7 @@ window.addEventListener("appinstalled",()=>{installEvt=null;toast("App installat
 
 /* ============ boot ============ */
 $("#btnBack").onclick=back;
-$("#btnHome").onclick=()=>go("projects");
+$("#btnHome").onclick=async()=>{stopDict();await autosave();go("projects");};
 $("#fab").onclick=()=>act("newDefect");
 $("#tabs").onclick=e=>{const b=e.target.closest("button");if(b)go("project",{tab:b.dataset.tab});};
 (async()=>{
