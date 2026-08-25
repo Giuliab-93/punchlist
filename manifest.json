@@ -1,6 +1,6 @@
 {
-  "name": "Punch List — Site Report",
-  "short_name": "Punch List",
+  "name": "Report di cantiere",
+  "short_name": "Cantiere",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
