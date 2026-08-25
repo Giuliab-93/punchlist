@@ -281,6 +281,35 @@ let S={view:"home",type:"snag",tab:"items",pid:null,proj:null,docId:null,doc:nul
 const DEF_LOC=["VIC ROOM","SALES AREA","ENTRANCE","BOH 1","BOH 2","WINDOW","FACADE","MEP ROOM","CEILING","FLOORING"];
 const DEF_SUP=["POLVERINI","GENERAL CONTRACTOR","MILLWORKER","MEP CONTRACTOR","LIGHTING","FLOORING","GLASS","OTHER"];
 const DEF_WHEN=["asap","done","By ","ongoing","approved","ASAP"];
+/* Dati presi dai format aziendali: si caricano sul cantiere con un tocco.
+   Nel Word la prima pagina arriva comunque dal format; questi servono ad
+   averli sotto mano nell'app e per il giorno in cui dovessero cambiare. */
+const SEED_BHR={
+  gc:"Blueprint",mw:"Polverini",
+  sched:{planned:{designSet:"2026-03-26",constructionSet:"2026-06-04",constructionStart:"2026-05-16",handover:"2026-09-07",opening:"2026-09-15"},
+         actual:{designSet:"2026-03-26",constructionSet:"2026-06-22",constructionStart:"2026-05-16",handover:"2026-09-12",opening:"2026-09-15"}},
+  dist:[
+   "Giulia Bracci; ESA Engineering; Project & Construction Manager; g.bracci@esa-engineering.com",
+   "Francesca Cipullo; ESA Engineering; Architectural Design Team Leader; f.cipullo@esa-engineering.com",
+   "Charbel Farraj; ESA Engineering; MEP Project Manager; c.farraj@esa-engineering.com",
+   "Abdo Atallah; ESA Engineering; Mechanical Engineer; a.atallah@esa-engineering.com",
+   "Nalini Asok; ESA Engineering; Electrical Engineer; n.asok@esa-engineering.com",
+   "Marco Noli; ESA Engineering; General Manager; m.noli@esa-engineering.com",
+   "Gordon Janni; Bulgari; Architecture Director; gordon.janni@bulgari.com",
+   "Rosastella Neri; Bulgari; Store Planning Director; rosastella.neri@bulgari.com",
+   "Cristiana Ghno; Bulgari; Store Planning; cristiana.ghno@bulgari.com",
+   "Chiara Campanile; Bulgari; Store Planning; chiara.campanile@bulgari.com",
+   "Benvindo Carvalho; Bulgari; Store Planning; benvindo.carvalho@bulgari.com",
+   "Siraj Kather; Bulgari; IT Team; siraj.kather@bulgari.com",
+   "Andrea Collina; Bulgari; Physical Security Manager; andrea.collina@bulgari.com",
+   "Amr Mahmoud; Bvlgari Hotel & Resort; Director of Engineering; amr.mahmoud@bulgarihotels.com",
+   "Michael Iacsina; Blueprint; Project Manager; ",
+   "Junette Bacus; Blueprint; Project Coordinator; junette.bacus@blueprintme.com",
+   "Sewar Mohamad; Blueprint; Site Manager; sewar.mohamad@blueprintme.com",
+   "Sara Ferri; Polverini; Project Manager; sara.ferri@polverini.it",
+   "Andrea Polverini; Polverini; CEO; andrea@polverini.it"
+  ].join("\n")
+};
 const DEF_TOPIC=["TIMING","PROCUREMENT","DESIGN","MEP","IT","SECURITY","LIGHTS","POWER","MILLWORK","FINISHES","SITE","GENERAL"];
 
 /* ============ router ============ */
@@ -355,7 +384,7 @@ async function render(){
 /* Numero di versione: si legge in fondo alla schermata iniziale.
    Serve a sapere con certezza quale codice sta girando sul telefono.
    Va alzato a ogni modifica caricata su GitHub. */
-const APP_VER="8 — 25.08.2026";
+const APP_VER="9 — 25.08.2026";
 const verTag='<div class="mut" style="text-align:center;margin:26px 0 4px">versione '+APP_VER+'</div>';
 
 /* ---- home: le tre tipologie ---- */
@@ -485,6 +514,10 @@ async function viewSite(){
   else for(const d of docs)h+='<div class="item" style="box-shadow:none;border:1px solid #e4e4e7" data-a="opendoc" data-id="'+d.id+'"><div class="txt">'+
     '<div class="t1">'+esc(TYPES[d.type].name)+'</div><div class="t2">'+esc(itDate(d.date))+(d.title?" · "+esc(d.title):"")+'</div></div></div>';
   h+='</div>';
+  h+='<div class="card"><h3>Come finisce nel Word</h3><div class="mut">'+
+    'La prima pagina di Weekly Report e verbale viene presa <b>dal format</b>: nel documento cambiano solo il numero del report e la data. '+
+    'Programma lavori e persone li tieni qui per averli sotto mano; quando cambiano davvero, aggiorna anche il file in <b>Format da usare</b>.'+
+    '</div></div>';
   h+='<button class="btn red" data-a="delsite">Elimina cantiere e tutti i suoi documenti</button>';
   return h;
 }
@@ -495,8 +528,10 @@ const SCHED=[["designSet","Design set"],["constructionSet","Construction set"],
              ["constructionStart","Construction start"],["handover","Handover"],["opening","Opening"]];
 function viewSched(p){
   const s=p.sched||{planned:{},actual:{}};
+  const vuoto=!p.sched&&!p.dist;
   let h='<div class="card"><h3>Programma lavori</h3>'+
-    '<div class="mut">Capitolo 1 del Weekly Report: date previste e date effettive.</div>';
+    '<div class="mut">Capitolo 1 del Weekly Report: date previste e date effettive.</div>'+
+    (vuoto?'<button class="btn sec" data-a="seed">Precompila con i dati del format</button>':'');
   for(const [k,l] of SCHED){
     h+='<label>'+l+'</label><div class="g2">'+
       '<div><div class="mut" style="margin-bottom:4px">PLANNED</div><input id="sp_'+k+'" type="date" value="'+esc((s.planned||{})[k]||"")+'"></div>'+
@@ -505,8 +540,8 @@ function viewSched(p){
   return h+'<button class="btn sec" data-a="savesched">Salva programma</button></div>';
 }
 function viewDist(p){
-  return '<div class="card"><h3>Distribution list</h3>'+
-   '<div class="mut">Capitolo 2 del Weekly Report. Una persona per riga, campi separati da punto e virgola:<br><b>Nome; Azienda; Ruolo; email</b></div>'+
+  return '<div class="card"><h3>Persone del cantiere</h3>'+
+   '<div class="mut">Distribution list del Weekly Report e presenti del verbale. Una persona per riga, campi separati da punto e virgola:<br><b>Nome; Azienda; Ruolo; email</b></div>'+
    '<textarea id="f_dist" style="min-height:150px" placeholder="Gordon Janni; Bulgari; Architecture Director; gordon.janni@bulgari.com">'+esc(p.dist||"")+'</textarea>'+
    '<button class="btn sec" data-a="savedist">Salva distribution list</button></div>';
 }
@@ -565,8 +600,10 @@ function readHeadForm(d){return readFields(d,cfg().head,"h_");}
 /* ---- intestazione del documento ---- */
 function viewHead(){
   const c=cfg();
-  let h='<div class="card"><h3>Intestazione del '+c.name+'</h3>'+
-    '<div class="mut">Questi dati finiscono in testa al documento Word.</div>';
+  const nota=c.t==="report"?"Nel Word la prima pagina arriva dal format: di questi cambiano solo <b>numero</b> e <b>data</b>."
+    :(c.t==="mom"?"Nel Word la prima pagina arriva dal format: di questi cambia solo la <b>data</b>."
+    :"Questi dati finiscono in testa al documento Word.");
+  let h='<div class="card"><h3>Intestazione del '+c.name+'</h3><div class="mut">'+nota+'</div>';
   for(const f of c.head)h+=fieldHTML(f,S.doc[f.k],"h_");
   h+='<button class="btn" data-a="savehead">Salva intestazione</button></div>';
   if(c.usePresents)h+=viewPresents();
@@ -1148,6 +1185,12 @@ async function act(a,id,el){
     P.name=$("#f_name").value.trim();P.address=$("#f_addr").value.trim();P.due=$("#f_due").value;
     P.by=$("#f_by").value.trim();P.gc=$("#f_gc").value.trim();P.mw=$("#f_mw").value.trim();
     await dbPut("projects",P);toast("Salvato");return render();
+  }
+  if(a==="seed"){
+    P.gc=P.gc||SEED_BHR.gc;P.mw=P.mw||SEED_BHR.mw;
+    P.sched=P.sched||JSON.parse(JSON.stringify(SEED_BHR.sched));
+    P.dist=P.dist||SEED_BHR.dist;
+    await dbPut("projects",P);toast("Precompilato dai format");return render();
   }
   if(a==="savesched"){
     const s={planned:{},actual:{}};
