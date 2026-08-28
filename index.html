@@ -130,6 +130,7 @@ const slug=s=>(s||"doc").replace(/[^\w\-]+/g,"_").replace(/^_+|_+$/g,"");
 
 /* camera / file */
 function pickFile(cam){return new Promise(res=>{const i=document.createElement("input");i.type="file";i.accept="image/*";if(cam)i.capture="environment";i.onchange=()=>res(i.files&&i.files[0]||null);i.click();});}
+function pickDocx(){return new Promise(res=>{const i=document.createElement("input");i.type="file";i.accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document";i.onchange=()=>res(i.files&&i.files[0]||null);i.click();});}
 async function resize(blob,max,q){
   const bmp=await createImageBitmap(blob);
   let w=bmp.width,h=bmp.height;
@@ -333,7 +334,7 @@ async function back(){
   const v=S.view;
   if(v==="place")go(S.placeBack||"item");
   else if(v==="item"||v==="photo")go("doc");
-  else if(v==="doc"||v==="newdoc")go("docs");
+  else if(v==="doc"||v==="newdoc"||v==="import")go("docs");
   else if(v==="docs")go("home");
   else if(v==="site"||v==="newsite")go("sites");
   else if(v==="sites")go("home");
@@ -355,6 +356,7 @@ async function render(){
   if(S.view==="home"){t.textContent="Report di cantiere";m.innerHTML=await viewHome();}
   else if(S.view==="docs"){t.textContent=TYPES[S.type].name;m.innerHTML=await viewDocs();fab.hidden=false;}
   else if(S.view==="newdoc"){t.textContent="Nuovo "+TYPES[S.type].name;m.innerHTML=await viewNewDoc();}
+  else if(S.view==="import"){t.textContent="Importa da Word";m.innerHTML=await viewImport();}
   else if(S.view==="sites"){t.textContent="Cantieri";m.innerHTML=await viewSites();}
   else if(S.view==="newsite"){t.textContent="Nuovo cantiere";m.innerHTML=viewNewSite();}
   else if(S.view==="site"){S.proj=await dbGet("projects",S.pid);t.textContent=S.proj.name;m.innerHTML=await viewSite();}
@@ -384,7 +386,7 @@ async function render(){
 /* Numero di versione: si legge in fondo alla schermata iniziale.
    Serve a sapere con certezza quale codice sta girando sul telefono.
    Va alzato a ogni modifica caricata su GitHub. */
-const APP_VER="9 — 25.08.2026";
+const APP_VER="12 — 28.08.2026";
 const verTag='<div class="mut" style="text-align:center;margin:26px 0 4px">versione '+APP_VER+'</div>';
 
 /* ---- home: le tre tipologie ---- */
@@ -417,6 +419,8 @@ async function viewDocs(){
   const projs=await dbAll("projects");
   const all=await dbAll("defects");
   let h='<button class="btn" data-a="newdoc">+ Nuovo '+c.name+'</button>';
+  /* riparte dai testi di un Word corretto a mano dopo l'export */
+  if(S.type==="report")h+='<button class="btn sec" data-a="impword" style="margin-top:8px">Importa da un Word corretto</button>';
   if(!docs.length)return h+'<div class="empty">Nessun documento di questa tipologia.</div>';
   h+='<div style="height:8px"></div>';
   for(const d of docs){
@@ -642,10 +646,15 @@ function groups(c){
   return out;
 }
 function itemRow(c,d,code){
+  /* le voci importate da un Word hanno solo i campi inglesi, e a volte
+     nemmeno il titolo: la riga ricade su quello che c'e' */
+  const ti=d.title||d.titleEn,de=d.description||d.descriptionEn;
+  const r1=d.location||ti||de||"—";
+  const r2=d.location?(ti||de||"(senza titolo)"):(ti?de:"");
   return '<div class="item" data-a="item" data-id="'+d.id+'">'+
     (c.photo==="none"?'':(d.thumb?'<img src="'+url(d.thumb)+'">':'<img>'))+
-    '<div class="txt"><div class="t1"><span class="num">'+esc(code)+'</span>'+esc(d.location||d.title||"—")+'</div>'+
-    '<div class="t2">'+esc(d.location?(d.title||d.description||"(senza titolo)"):(d.description||""))+'</div>'+
+    '<div class="txt"><div class="t1"><span class="num">'+esc(code)+'</span>'+esc(r1)+'</div>'+
+    '<div class="t2">'+esc(r2)+'</div>'+
     '<div style="margin-top:5px">'+
     (c.chapters
       ? (d.flag?'<span class="pill '+FLAGPILL[d.flag]+'">'+esc(d.flag)+'</span>':'<span class="pill gray">senza priorità</span>')
@@ -784,7 +793,8 @@ function viewExport(){
   const c=cfg();
   const n=S.items.length,done=S.items.filter(d=>!isOpen(c,d)).length;
   const noPos=c.usePlan?markerList().filter(d=>d.x==null).length:0;
-  const noDesc=S.items.filter(d=>!d.description).length;
+  /* una voce importata dal Word ha solo l'inglese: non e' senza descrizione */
+  const noDesc=S.items.filter(d=>!d.description&&!d.descriptionEn).length;
   const noFlag=c.chapters?S.items.filter(d=>!d.flag).length:0;
   const noCap=c.usePhotos?S.photos.filter(p=>!p.caption).length:0;
   const lang=S.doc.lang||c.defLang||"it",miss=missingEn().length;
@@ -813,6 +823,45 @@ function viewExport(){
    '<button class="btn sec" data-a="gallery">Salva tutte in galleria</button></div>';
 }
 
+
+/* ---- anteprima di quello che si e' letto dal Word ---- */
+let IMP=null;
+async function viewImport(){
+  const c=TYPES.report;
+  const projs=(await dbAll("projects")).sort((a,b)=>b.createdAt-a.createdAt);
+  if(!projs.length)return '<div class="card"><div class="empty">Prima serve un cantiere.</div>'+
+    '<button class="btn" data-a="newsite">+ Crea il primo cantiere</button></div>';
+  const last=await lastUsedProj(),p=projs.find(x=>x.id===last)||projs[0];
+  let tot=0,okn=0;
+  for(const ch of c.chapters){const l=IMP.chapters[ch.k]||[];tot+=l.length;okn+=l.filter(x=>x.flag==="OK").length;}
+  let h='<div class="card"><h3>'+esc(IMP.file)+'</h3>'+
+    '<div class="mut">'+tot+' voci lette dai capitoli'+(IMP.reportNo?' &middot; report n. '+esc(IMP.reportNo):'')+
+    '. Le foto non si importano: quelle si rifanno nel report nuovo.</div>'+
+    '<div class="mut" style="margin-top:8px">Il testo entra nei <b>campi inglesi</b>, quelli che il Word usa. L&rsquo;italiano resta vuoto.</div>'+
+    (okn?'<label class="chk" style="margin-top:10px"><input type="checkbox" id="i_skipok"><span>Lascia fuori le '+okn+' voci gi&agrave; segnate OK</span></label>':'')+
+    '<label>Cantiere</label><select id="d_proj">'+
+    projs.map(x=>'<option value="'+x.id+'"'+(x.id===p.id?" selected":"")+'>'+esc(x.name)+'</option>').join("")+'</select>';
+  for(const f of c.head){
+    let v=defVal(f,p);
+    if(f.k==="reportNo"&&IMP.reportNo)v=String(Number(IMP.reportNo)+1);
+    h+=fieldHTML(f,v,"d_");
+  }
+  h+='<button class="btn" data-a="saveimp">Crea il Weekly Report con queste voci</button></div>';
+  for(const ch of c.chapters){
+    const list=IMP.chapters[ch.k]||[];
+    h+='<div class="chap"><span class="cn">'+ch.n+'</span>'+esc(ch.l)+'<span class="cc">'+(list.length||"—")+'</span></div>';
+    list.forEach((it,i)=>{
+      h+='<div class="item"><div class="txt"><div class="t1"><span class="num">'+ch.n+'.'+(i+1)+'</span>'+
+        esc(it.title||"(senza titolo)")+'</div>'+
+        '<div class="t2">'+esc(it.description)+'</div><div style="margin-top:5px">'+
+        (it.flag?'<span class="pill '+FLAGPILL[it.flag]+'">'+esc(it.flag)+'</span>':'<span class="pill gray">senza priorit&agrave;</span>')+
+        (it.supplier?' <span class="pill gray">'+esc(it.supplier)+'</span>':'')+
+        (it.when?' <span class="pill gray">'+esc(it.when)+'</span>':'')+
+        '</div></div></div>';
+    });
+  }
+  return h;
+}
 /* ============ plan canvas ============
    Nella snag list i segnaposto sono i difetti e portano il loro numero.
    Nel weekly report sono le foto e portano il numero della didascalia. */
@@ -935,6 +984,183 @@ function makeZip(files){
   end.setUint32(0,0x06054b50,true);end.setUint16(8,files.length,true);end.setUint16(10,files.length,true);
   end.setUint32(12,csize,true);end.setUint32(16,off,true);
   return new Blob([...chunks,...central,new Uint8Array(end.buffer)],{type:"application/zip"});
+}
+
+/* ============ rilettura di un Word ============
+   Serve quando il report e' stato corretto a mano in Word dopo l'export:
+   da quel testo riparte il report della settimana dopo, cosi' le correzioni
+   non si riscrivono a mano. Si leggono solo i capitoli descrittivi, mai le
+   foto: quelle si rifanno nel documento nuovo.
+
+   Niente librerie, come nel resto dell'app. Lo zip si apre a mano partendo
+   dal central directory (le dimensioni li' sono sempre giuste, nei local
+   header a volte no) e i dati compressi passano per DecompressionStream, che
+   Chrome ha nativo e funziona anche offline. */
+const dvw=u8=>new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+async function unzipEntry(u8,want){
+  const v=dvw(u8);
+  let eo=-1;
+  for(let i=u8.length-22;i>=0&&i>u8.length-70000;i--){if(v.getUint32(i,true)===0x06054b50){eo=i;break;}}
+  if(eo<0)throw new Error("non sembra un file .docx");
+  const n=v.getUint16(eo+10,true);
+  let p=v.getUint32(eo+16,true);
+  const dec=new TextDecoder();
+  for(let k=0;k<n;k++){
+    if(v.getUint32(p,true)!==0x02014b50)throw new Error("archivio illeggibile");
+    const method=v.getUint16(p+10,true),csize=v.getUint32(p+20,true);
+    const nl=v.getUint16(p+28,true),el=v.getUint16(p+30,true),cl=v.getUint16(p+32,true);
+    const off=v.getUint32(p+42,true);
+    const name=dec.decode(u8.subarray(p+46,p+46+nl));
+    if(name===want){
+      const lnl=v.getUint16(off+26,true),lel=v.getUint16(off+28,true);
+      const start=off+30+lnl+lel;
+      const data=u8.subarray(start,start+csize);
+      if(method===0)return data;
+      if(method!==8)throw new Error("compressione non gestita");
+      if(typeof DecompressionStream==="undefined")throw new Error("questo browser non sa decomprimere il file");
+      const st=new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new Uint8Array(await new Response(st).arrayBuffer());
+    }
+    p+=46+nl+el+cl;
+  }
+  throw new Error("dentro il file manca "+want);
+}
+const WNS="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+/* i figli di un elemento, sciogliendo i content control (w:sdt): la data e
+   certe celle dei format aziendali stanno dentro quelli e altrimenti
+   sparirebbero dalla lettura. */
+function* wkids(el){
+  for(const ch of el.children){
+    if(ch.localName==="sdt"){
+      const c=[...ch.children].find(x=>x.localName==="sdtContent");
+      if(c)yield* wkids(c);
+    }else yield ch;
+  }
+}
+const wclean=s=>(s||"").replace(/\s+/g," ").trim();
+function wbold(r){
+  const rp=[...r.children].find(x=>x.localName==="rPr");
+  if(!rp)return false;
+  const b=[...rp.children].find(x=>x.localName==="b");
+  if(!b)return false;
+  const v=b.getAttributeNS(WNS,"val")||b.getAttribute("w:val");
+  return !(v==="0"||v==="false");
+}
+function wruns(p){
+  const out=[];
+  for(const r of p.getElementsByTagNameNS(WNS,"r")){
+    let s="";
+    for(const nd of r.childNodes){
+      if(nd.localName==="t")s+=nd.textContent;
+      else if(nd.localName==="br"||nd.localName==="cr"||nd.localName==="tab")s+=" ";
+    }
+    if(s)out.push({t:s,b:wbold(r)});
+  }
+  return out;
+}
+const wtext=runs=>runs.map(r=>r.t).join("");
+const wpara=p=>wclean(wtext(wruns(p)));
+function wblocks(tc){
+  const out=[];
+  for(const el of wkids(tc)){
+    if(el.localName!=="p")continue;
+    const runs=wruns(el),full=wclean(wtext(runs));
+    if(full)out.push({full:full,runs:runs});
+  }
+  return out;
+}
+const wcell=tc=>wblocks(tc).map(b=>b.full).join(" ");
+/* Titolo e descrizione stanno nella stessa cella: il titolo e' la parte in
+   grassetto in testa, come "Facade: Polverini will try to adjust...". Si
+   prendono i run in grassetto iniziali (Word ne spezza uno in tre appena
+   correggi una lettera, quindi si rimettono insieme). Se il grassetto non
+   c'e', non c'e' titolo e il testo va tutto nella descrizione: e' la regola
+   di Giulia, nei suoi report la voce senza etichetta e' scritta di seguito,
+   senza grassetto e senza due punti. */
+function wsplit(tc){
+  const b=wblocks(tc);
+  if(!b.length)return{title:"",description:""};
+  if(b.length>1){
+    const lab=b[0].runs.length&&b[0].runs.every(r=>r.b);
+    if(lab)return{title:b[0].full.replace(/[:\-\u2013]\s*$/,""),description:b.slice(1).map(x=>x.full).join("\n")};
+    return{title:"",description:b.map(x=>x.full).join("\n")};
+  }
+  const runs=b[0].runs;
+  let i=0,t="";
+  while(i<runs.length&&runs[i].b){t+=runs[i].t;i++;}
+  t=wclean(t).replace(/[:\-\u2013]\s*$/,"");
+  const rest=wclean(wtext(runs.slice(i))).replace(/^[:\-\u2013]\s*/,"");
+  if(t&&t.length<=60&&rest.length>=10)return{title:t,description:rest};
+  return{title:"",description:b[0].full};
+}
+function wrow(tr){const out=[];for(const el of wkids(tr))if(el.localName==="tc")out.push(el);return out;}
+/* capitolo dell'app -> titolo nel Word, gli stessi di weekly.py */
+const WCHAP=[["permits","permits and approvals"],["design","design"],
+  ["construction","construction activity"],["co_gc","general contractor"],
+  ["co_mw","millwork"],["risk","risk / question list/ site issues"],
+  ["notes","remarkable notes"],["shipment","shipment"]];
+const wnorm=s=>wclean(s).toLowerCase().replace(/\s*\/\s*/g,"/").replace(/[.:]+$/,"");
+function wtable(tbl){
+  const rows=[];for(const el of wkids(tbl))if(el.localName==="tr")rows.push(el);
+  if(rows.length<2)return[];
+  const head=wrow(rows[0]).map(wcell),n=head.length,low=head.map(x=>x.toLowerCase());
+  const flags=n>=5&&/critical/.test(low[n-3]||"")&&/urgent/.test(low[n-2]||"");
+  const cost=/cost/.test(low[2]||"")&&/delay/.test(low[3]||"");
+  const ship=!flags&&/description/.test(low[2]||"");
+  const out=[];
+  for(let i=1;i<rows.length;i++){
+    const c=wrow(rows[i]);
+    if(c.length<2)continue;
+    const it={title:"",description:"",supplier:"",when:"",cost:"",delay:"",flag:""};
+    if(ship){
+      it.title=wcell(c[1]);it.description=c[2]?wcell(c[2]):"";
+      it.supplier=c[3]?wcell(c[3]):"";it.when=c[4]?wcell(c[4]):"";
+    }else{
+      const t=wsplit(c[1]);it.title=t.title;it.description=t.description;
+      if(cost){it.cost=c[2]?wcell(c[2]):"";it.delay=c[3]?wcell(c[3]):"";}
+      else if(n>=7){it.supplier=c[2]?wcell(c[2]):"";it.when=c[3]?wcell(c[3]):"";}
+    }
+    if(flags&&c.length>=n){
+      const a=wcell(c[n-3]),b=wcell(c[n-2]),d=wcell(c[n-1]);
+      if(a)it.flag="CRITICAL";
+      else if(b)it.flag="URGENT";
+      else if(d){it.flag="OK";
+        /* nei change order la colonna OK porta lo stato scritto ("approved") */
+        if(cost&&d.toUpperCase()!=="X")it.when=d;}
+    }
+    if(!it.title&&!it.description&&!it.cost)continue;
+    out.push(it);
+  }
+  return out;
+}
+function parseWeekly(xml){
+  const doc=new DOMParser().parseFromString(xml,"application/xml");
+  if(doc.getElementsByTagName("parsererror").length)throw new Error("XML del documento illeggibile");
+  const body=[...doc.documentElement.children].find(x=>x.localName==="body");
+  if(!body)throw new Error("documento senza corpo");
+  const out={reportNo:"",chapters:{}};
+  let cur=null,cover="",seen=false;
+  for(const el of wkids(body)){
+    if(el.localName==="p"){
+      const pr=[...el.children].find(x=>x.localName==="pPr");
+      const st=pr?[...pr.children].find(x=>x.localName==="pStyle"):null;
+      const sv=st?(st.getAttributeNS(WNS,"val")||st.getAttribute("w:val")||""):"";
+      const txt=wpara(el);
+      if(!txt)continue;
+      if(/^(titolo|heading)/i.test(sv)){
+        const hit=WCHAP.find(c=>wnorm(c[1])===wnorm(txt));
+        cur=hit?hit[0]:null;seen=true;
+      }else if(!seen)cover+=" "+txt;
+      continue;
+    }
+    if(el.localName!=="tbl"||!cur)continue;
+    /* di ogni capitolo si legge la prima tabella che lo segue */
+    if(!out.chapters[cur])out.chapters[cur]=wtable(el);
+    cur=null;
+  }
+  const m=/report\s*n\.?\s*(\d+)/i.exec(cover);
+  if(m)out.reportNo=m[1];
+  return out;
 }
 const bytes=b=>b.arrayBuffer().then(a=>new Uint8Array(a));
 
@@ -1208,6 +1434,45 @@ async function act(a,id,el){
   }
 
   /* documento */
+  if(a==="impword"){
+    const f=await pickDocx();if(!f)return;
+    busy("Lettura del Word…");
+    try{
+      const xml=new TextDecoder().decode(await unzipEntry(new Uint8Array(await f.arrayBuffer()),"word/document.xml"));
+      const r=parseWeekly(xml);
+      let tot=0;for(const k in r.chapters)tot+=r.chapters[k].length;
+      unbusy();
+      if(!tot)return toast("Nessuna voce trovata nei capitoli: è un Weekly Report su quel format?",5000);
+      IMP={file:f.name,chapters:r.chapters,reportNo:r.reportNo};
+      return go("import");
+    }catch(e){unbusy();return toast("Non riesco a leggere il file: "+e.message,5000);}
+  }
+  if(a==="saveimp"){
+    const c=TYPES.report;
+    const pid=$("#d_proj").value,p=await dbGet("projects",pid);
+    const skip=!!($("#i_skipok")&&$("#i_skipok").checked);
+    const D={id:uid(),projectId:pid,type:"report",lang:c.defLang||"it",createdAt:Date.now()};
+    for(const f of c.head)D[f.k]=$("#d_"+f.k).value;
+    if(!D.date)D.date=today();
+    if(!D.due&&p)D.due=p.due||"";
+    await dbPut("docs",D);
+    let n=0;
+    for(const ch of c.chapters)for(const it of (IMP.chapters[ch.k]||[])){
+      if(skip&&it.flag==="OK")continue;
+      const d={id:uid(),kind:"item",docId:D.id,projectId:pid,num:++n,
+        before:null,thumb:null,after:null,status:"open",x:null,y:null,angle:0,createdAt:Date.now()};
+      for(const fl of c.fields)d[fl.k]="";
+      for(const fl of c.fields.filter(x=>x.en))d[fl.k+"En"]="";
+      d.chapter=ch.k;
+      /* il Word esportato e' in inglese: il testo torna nei campi inglesi */
+      d.titleEn=it.title;d.descriptionEn=it.description;
+      d.supplier=it.supplier;d.when=it.when;d.cost=it.cost;d.delay=it.delay;d.flag=it.flag;
+      await dbPut("defects",d);
+    }
+    IMP=null;
+    toast(n+" voci importate");
+    return go("doc",{docId:D.id,tab:"items",type:"report"});
+  }
   if(a==="savedoc"){
     const c=TYPES[S.type];
     const pid=$("#d_proj").value;
