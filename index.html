@@ -389,7 +389,7 @@ async function render(){
 /* Numero di versione: si legge in fondo alla schermata iniziale.
    Serve a sapere con certezza quale codice sta girando sul telefono.
    Va alzato a ogni modifica caricata su GitHub. */
-const APP_VER="13 — 01.09.2026";
+const APP_VER="14 — 03.09.2026";
 const verTag='<div class="mut" style="text-align:center;margin:26px 0 4px">versione '+APP_VER+'</div>';
 
 /* ---- home: le tre tipologie ---- */
@@ -1152,10 +1152,13 @@ function parseWeekly(xml){
       const sv=st?(st.getAttributeNS(WNS,"val")||st.getAttribute("w:val")||""):"";
       const txt=wpara(el);
       if(!txt)continue;
-      if(/^(titolo|heading)/i.test(sv)){
-        const hit=WCHAP.find(c=>wnorm(c[1])===wnorm(txt));
-        cur=hit?hit[0]:null;seen=true;
-      }else if(!seen)cover+=" "+txt;
+      /* Il capitolo si riconosce dal testo, non dallo stile del paragrafo:
+         in qualche report il titolo e' formattato a mano e non e' un vero
+         "Titolo", e cosi' il capitolo veniva saltato senza dire niente. */
+      const hit=WCHAP.find(c=>wnorm(c[1])===wnorm(txt));
+      if(hit){cur=hit[0];seen=true;}
+      else if(/^(titolo|heading)/i.test(sv)){cur=null;seen=true;}
+      else if(!seen)cover+=" "+txt;
       continue;
     }
     if(el.localName!=="tbl"||!cur)continue;
