@@ -60,6 +60,9 @@ button{font-family:inherit;font-size:16px;cursor:pointer}
 .ovl{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;display:flex;align-items:center;justify-content:center;padding:30px;color:#fff;text-align:center;font-size:16px;font-weight:600;flex-direction:column;gap:14px}
 .bar{width:220px;height:6px;background:#3f3f46;border-radius:3px;overflow:hidden}
 .bar i{display:block;height:100%;background:#dc2626;width:0}
+.askbox{background:#fff;color:#18181b;border-radius:16px;padding:18px;width:100%;max-width:340px;text-align:left;font-size:15px;font-weight:500}
+.askbox .m{margin:0 0 14px;line-height:1.45}
+.chap .src{background:#fff;color:#3f3f46;border:1px solid #d4d4d8;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
 hr{border:0;border-top:1px solid #e4e4e7;margin:16px 0}
 h3{font-size:15px;margin:0 0 10px}
 .card.en{border-left:4px solid #1d4ed8}
@@ -120,6 +123,27 @@ let ovlEl=null;
 function busy(msg){if(!ovlEl){ovlEl=document.createElement("div");ovlEl.className="ovl";ovlEl.innerHTML='<div id="ovlMsg"></div><div class="bar"><i id="ovlBar"></i></div>';document.body.appendChild(ovlEl);}$("#ovlMsg").textContent=msg;$("#ovlBar").style.width="0%";}
 function busyPct(p){if(ovlEl)$("#ovlBar").style.width=Math.round(p*100)+"%";}
 function unbusy(){if(ovlEl){ovlEl.remove();ovlEl=null;}}
+/* Conferme dentro l'app. Il confirm() del browser non e' affidabile: se in una
+   finestra di dialogo si spunta "impedisci a questa pagina di crearne altre",
+   Chrome risponde no a tutte le successive senza mostrare niente, e i tasti di
+   eliminazione smettono di funzionare in silenzio. */
+function choose(msg,opts){
+  return new Promise(res=>{
+    const el=document.createElement("div");el.className="ovl";
+    const box=document.createElement("div");box.className="askbox";
+    const m=document.createElement("div");m.className="m";m.textContent=msg;box.appendChild(m);
+    const done=v=>{el.remove();res(v);};
+    for(const o of opts){
+      const b=document.createElement("button");b.className="btn "+(o.cls||"");b.textContent=o.l;
+      b.onclick=()=>done(o.v);box.appendChild(b);
+    }
+    const no=document.createElement("button");no.className="btn sec";no.textContent="Annulla";
+    no.onclick=()=>done(null);box.appendChild(no);
+    el.appendChild(box);document.body.appendChild(el);
+    el.onclick=ev=>{if(ev.target===el)done(null);};
+  });
+}
+const ask=(msg,label)=>choose(msg,[{v:true,l:label||"Elimina",cls:"red"}]).then(v=>v===true);
 const pad2=n=>String(n).padStart(2,"0");
 function today(){const d=new Date();return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());}
 function itDate(iso){if(!iso)return"";const p=String(iso).split("-");return p.length===3?p[2]+"."+p[1]+"."+p[0]:iso;}
@@ -337,6 +361,8 @@ async function back(){
   const v=S.view;
   if(v==="place")go(S.placeBack||"item");
   else if(v==="item"||v==="photo")go("doc");
+  else if(v==="chapsrc"){if(CS&&CS.src){CS.src=null;go("chapsrc");}else{CS=null;go("doc",{tab:"items"});}}
+  else if(v==="photosrc")go("doc",{tab:"photos"});
   else if(v==="doc"||v==="newdoc"||v==="import")go("docs");
   else if(v==="docs")go("home");
   else if(v==="site"||v==="newsite")go("sites");
@@ -348,7 +374,7 @@ async function render(){
   freeUrls();
   const m=$("#main"),t=$("#title"),tabs=$("#tabs"),fab=$("#fab"),bb=$("#btnBack"),bh=$("#btnHome");
   tabs.hidden=true;tabs.innerHTML="";fab.hidden=true;bb.hidden=S.view==="home";bh.hidden=S.view==="home";
-  if(S.docId&&["doc","item","photo","place"].includes(S.view)){
+  if(S.docId&&["doc","item","photo","place","chapsrc","photosrc"].includes(S.view)){
     S.doc=await dbGet("docs",S.docId);
     S.proj=await dbGet("projects",S.doc.projectId);
     S.pid=S.doc.projectId;
@@ -360,6 +386,8 @@ async function render(){
   else if(S.view==="docs"){t.textContent=TYPES[S.type].name;m.innerHTML=await viewDocs();fab.hidden=false;}
   else if(S.view==="newdoc"){t.textContent="Nuovo "+TYPES[S.type].name;m.innerHTML=await viewNewDoc();}
   else if(S.view==="import"){t.textContent="Importa da Word";m.innerHTML=await viewImport();}
+  else if(S.view==="chapsrc"){const ch=CS&&chapOf(TYPES.report,CS.chap);t.textContent=ch?"Capitolo "+ch.n:"Capitolo";m.innerHTML=await viewChapSrc();}
+  else if(S.view==="photosrc"){t.textContent="Foto da un altro report";m.innerHTML=await viewPhotoSrc();}
   else if(S.view==="sites"){t.textContent="Cantieri";m.innerHTML=await viewSites();}
   else if(S.view==="newsite"){t.textContent="Nuovo cantiere";m.innerHTML=viewNewSite();}
   else if(S.view==="site"){S.proj=await dbGet("projects",S.pid);t.textContent=S.proj.name;m.innerHTML=await viewSite();}
@@ -389,7 +417,7 @@ async function render(){
 /* Numero di versione: si legge in fondo alla schermata iniziale.
    Serve a sapere con certezza quale codice sta girando sul telefono.
    Va alzato a ogni modifica caricata su GitHub. */
-const APP_VER="14 — 03.09.2026";
+const APP_VER="15 — 03.09.2026";
 const verTag='<div class="mut" style="text-align:center;margin:26px 0 4px">versione '+APP_VER+'</div>';
 
 /* ---- home: le tre tipologie ---- */
@@ -674,7 +702,9 @@ function viewItems(){
     let h='<div class="mut" style="margin-bottom:12px">Le voci stanno nei capitoli del report. Tocca <b>+</b> e scegli il capitolo.</div>';
     for(const ch of c.chapters){
       const list=S.items.filter(d=>d.chapter===ch.k);
-      h+='<div class="chap"><span class="cn">'+ch.n+'</span>'+esc(ch.l)+'<span class="cc">'+(list.length||"—")+'</span></div>';
+      h+='<div class="chap"><span class="cn">'+ch.n+'</span>'+esc(ch.l)+
+        '<span class="cc">'+(list.length||"—")+'</span>'+
+        '<button class="src" data-a="chapSrc" data-id="'+ch.k+'">prendi da…</button></div>';
       list.forEach((d,i)=>{h+=itemRow(c,d,ch.n+"."+(i+1));});
     }
     return h;
@@ -695,14 +725,16 @@ function viewItems(){
 }
 /* ---- foto del report: numerate, vanno tutte nel capitolo finale ---- */
 function viewPhotos(){
-  const gal='<button class="btn sec" data-a="pickGallery" style="margin-bottom:12px">Aggiungi dalla galleria</button>';
+  const gal='<button class="btn sec" data-a="pickGallery">Aggiungi dalla galleria</button>'+
+    '<button class="btn sec" data-a="photoSrc" style="margin-bottom:12px">Prendi le foto da un altro report</button>';
   if(!S.photos.length)return '<div class="empty">Nessuna foto.<br>Tocca <b>+</b> per scattare oppure prendile dalla galleria del telefono: finiscono tutte nel capitolo <b>Photos</b>, numerate in ordine.</div>'+gal;
   let h=gal+'<div class="mut" style="margin-bottom:12px">In ordine di scatto: il numero è quello della didascalia nel report e del segnaposto sulla pianta. Le foto prese dalla galleria si accodano in fondo, ordinate per data di scatto.</div>';
   S.photos.forEach((p,i)=>{
     h+='<div class="item" data-a="photo" data-id="'+p.id+'">'+
       (p.thumb?'<img src="'+url(p.thumb)+'">':'<img>')+
       '<div class="txt"><div class="t1"><span class="num">'+(i+1)+'</span>'+esc(p.caption||"(senza didascalia)")+'</div>'+
-      '<div style="margin-top:5px">'+(p.x==null?'<span class="pill open">no pianta</span>':'<span class="pill done">sulla pianta</span>')+'</div></div></div>';
+      '<div style="margin-top:5px">'+(p.x==null?'<span class="pill open">no pianta</span>':'<span class="pill done">sulla pianta</span>')+
+      (p.from?' <span class="pill urg">da aggiornare</span>':'')+'</div></div></div>';
   });
   return h;
 }
@@ -864,6 +896,85 @@ async function viewImport(){
         (it.when?' <span class="pill gray">'+esc(it.when)+'</span>':'')+
         '</div></div></div>';
     });
+  }
+  return h;
+}
+
+/* ---- comporre un report pescando da altre fonti ----
+   Un capitolo per volta: si sceglie da dove (un Word oppure un report gia'
+   nell'app), quale capitolo della sorgente, e se sostituire o accodare.
+   Le foto si prendono in blocco da un report dello stesso cantiere, con
+   didascalie e segnaposto: le immagini si aggiornano una a una dopo. */
+let CS=null;
+function csRecs(list){
+  /* le voci lette da un Word hanno solo l'inglese; quelle di un report
+     dell'app arrivano gia' con tutti i campi */
+  const c=TYPES.report;
+  return list.map(it=>{
+    const o={};
+    for(const f of c.fields)o[f.k]=it[f.k]||"";
+    for(const f of c.fields.filter(x=>x.en))o[f.k+"En"]=it[f.k+"En"]||"";
+    return o;
+  });
+}
+const csLabel=it=>it.titleEn||it.title||it.descriptionEn||it.description||"";
+async function viewChapSrc(){
+  if(!CS)return '<div class="empty">Torna indietro e ritocca «prendi da…».</div>';
+  const c=TYPES.report,ch=chapOf(c,CS.chap);
+  if(CS.src){
+    let h='<div class="card"><h3>'+esc(CS.src.name)+'</h3>'+
+      '<div class="mut">Quale capitolo porto dentro <b>'+ch.n+' '+esc(ch.l)+'</b>?</div></div>';
+    let vuoto=true;
+    for(const x of c.chapters){
+      const list=CS.src.chapters[x.k]||[];
+      if(!list.length)continue;
+      vuoto=false;
+      h+='<div class="item" data-a="csTake" data-id="'+x.k+'"><div class="txt">'+
+        '<div class="t1"><span class="num">'+x.n+'</span>'+esc(x.l)+'</div>'+
+        '<div class="t2">'+esc(list.map(csLabel).filter(t=>t).join(" · "))+'</div>'+
+        '<div style="margin-top:5px"><span class="pill gray">'+list.length+' voci</span>'+
+        (x.k===CS.chap?' <span class="pill done">stesso capitolo</span>':'')+'</div></div></div>';
+    }
+    return h+(vuoto?'<div class="empty">In questa sorgente non c’è nessun capitolo con delle voci.</div>':'');
+  }
+  const n=S.items.filter(d=>d.chapter===CS.chap).length;
+  const docs=(await dbAll("docs")).filter(d=>d.type==="report"&&d.id!==S.doc.id)
+    .sort((a,b)=>(b.date||"").localeCompare(a.date||"")||b.createdAt-a.createdAt);
+  const projs=await dbAll("projects"),all=await dbAll("defects");
+  let h='<div class="card"><h3>'+ch.n+' '+esc(ch.l)+'</h3>'+
+    '<div class="mut">'+(n?n+' voci in questo capitolo':'Capitolo vuoto')+'. Da dove le prendo?</div>'+
+    '<button class="btn" data-a="csWord">Da un file Word</button></div>';
+  if(!docs.length)return h+'<div class="empty">Non c’è nessun altro Weekly Report nell’app da cui pescare.</div>';
+  h+='<div class="chap"><span class="cn">APP</span>Da un report già nell’app</div>';
+  for(const d of docs){
+    const p=projs.find(x=>x.id===d.projectId);
+    const its=all.filter(x=>x.docId===d.id&&x.kind!=="photo");
+    const qui=its.filter(x=>x.chapter===CS.chap).length;
+    h+='<div class="item" data-a="csDoc" data-id="'+d.id+'"><div class="txt">'+
+      '<div class="t1">'+esc(docLabel(d,p))+(d.reportNo?' · N. '+esc(d.reportNo):'')+'</div>'+
+      '<div style="margin-top:5px"><span class="pill gray">'+its.length+' voci</span>'+
+      (qui?' <span class="pill done">'+qui+' in questo capitolo</span>':'')+'</div></div></div>';
+  }
+  return h;
+}
+async function viewPhotoSrc(){
+  const all=await dbAll("defects");
+  const docs=(await dbAll("docs"))
+    .filter(d=>d.id!==S.doc.id&&d.projectId===S.doc.projectId&&TYPES[d.type]&&TYPES[d.type].usePhotos)
+    .filter(d=>all.some(x=>x.docId===d.id&&x.kind==="photo"))
+    .sort((a,b)=>(b.date||"").localeCompare(a.date||"")||b.createdAt-a.createdAt);
+  let h='<div class="card"><h3>Foto da un altro report</h3>'+
+    '<div class="mut">Vengono copiate tutte, con didascalia e posizione sulla pianta. Poi aggiorni le singole immagini dalla scheda della foto: posizione e didascalia restano.</div></div>';
+  if(!docs.length)return h+'<div class="empty">Nessun altro documento di questo cantiere ha delle foto.</div>';
+  for(const d of docs){
+    const ph=all.filter(x=>x.docId===d.id&&x.kind==="photo").sort((a,b)=>a.num-b.num);
+    const sulla=ph.filter(x=>x.x!=null).length;
+    h+='<div class="item" data-a="phTake" data-id="'+d.id+'">'+
+      (ph[0]&&ph[0].thumb?'<img src="'+url(ph[0].thumb)+'">':'<img>')+
+      '<div class="txt"><div class="t1">'+esc(docLabel(d,S.proj))+(d.reportNo?' · N. '+esc(d.reportNo):'')+'</div>'+
+      '<div class="t2">'+esc(TYPES[d.type].name)+'</div>'+
+      '<div style="margin-top:5px"><span class="pill gray">'+ph.length+' foto</span>'+
+      (sulla?' <span class="pill done">'+sulla+' sulla pianta</span>':'')+'</div></div></div>';
   }
   return h;
 }
@@ -1457,7 +1568,7 @@ async function act(a,id,el){
   if(a==="savedist"){P.dist=$("#f_dist").value;await dbPut("projects",P);toast(parseDist(P.dist).length+" persone in distribution list");return render();}
   if(a==="delsite"){
     const docs=(await dbAll("docs")).filter(d=>d.projectId===P.id);
-    if(!confirm("Eliminare \""+P.name+"\" con "+docs.length+" documenti e tutte le foto?"))return;
+    if(!await ask("Eliminare \""+P.name+"\" con "+docs.length+" documenti e tutte le foto?"))return;
     const all=await dbAll("defects");
     for(const d of all)if(d.projectId===P.id)await dbDel("defects",d.id);
     for(const d of docs)await dbDel("docs",d.id);
@@ -1465,6 +1576,80 @@ async function act(a,id,el){
   }
 
   /* documento */
+  if(a==="chapSrc"){CS={chap:id,src:null};return go("chapsrc");}
+  if(a==="csWord"){
+    const f=await pickDocx();if(!f)return;
+    busy("Lettura del Word…");
+    try{
+      const xml=new TextDecoder().decode(await unzipEntry(new Uint8Array(await f.arrayBuffer()),"word/document.xml"));
+      const r=parseWeekly(xml);
+      const ch={};let tot=0;
+      for(const k in r.chapters){
+        ch[k]=r.chapters[k].map(it=>({titleEn:it.title,descriptionEn:it.description,
+          supplier:it.supplier,when:it.when,cost:it.cost,delay:it.delay,flag:it.flag}));
+        tot+=ch[k].length;
+      }
+      unbusy();
+      if(!tot)return toast("Nessuna voce trovata nei capitoli di quel file",5000);
+      CS.src={kind:"word",name:f.name,chapters:ch};
+      return render();
+    }catch(e){unbusy();return toast("Non riesco a leggere il file: "+e.message,5000);}
+  }
+  if(a==="csDoc"){
+    const d=await dbGet("docs",id),p=await dbGet("projects",d.projectId);
+    const its=(await dbByDoc(id)).filter(x=>x.kind!=="photo").sort((x,y)=>x.num-y.num);
+    const ch={};
+    for(const it of its){const k=it.chapter||"";if(!ch[k])ch[k]=[];ch[k].push(it);}
+    CS.src={kind:"doc",name:docLabel(d,p)+(d.reportNo?" · N. "+d.reportNo:""),chapters:ch};
+    return render();
+  }
+  if(a==="csTake"){
+    const src=csRecs((CS.src&&CS.src.chapters[id])||[]);
+    if(!src.length)return toast("Capitolo vuoto");
+    const cur=S.items.filter(x=>x.chapter===CS.chap);
+    let mode="add";
+    if(cur.length){
+      mode=await choose("Nel capitolo ci sono già "+cur.length+" voci. Cosa faccio con le "+src.length+" che arrivano?",
+        [{v:"rep",l:"Sostituisci le "+cur.length+" voci",cls:"red"},{v:"add",l:"Aggiungi in coda"}]);
+      if(!mode)return;
+    }
+    busy("Importazione…");
+    if(mode==="rep")for(const x of cur)await dbDel("defects",x.id);
+    let n=(await dbByDoc(S.doc.id)).reduce((m,x)=>Math.max(m,x.num||0),0);
+    for(const it of src){
+      const d=Object.assign({},it,{id:uid(),kind:"item",docId:S.doc.id,projectId:S.doc.projectId,
+        num:++n,before:null,thumb:null,after:null,status:"open",x:null,y:null,angle:0,
+        createdAt:Date.now(),chapter:CS.chap});
+      await dbPut("defects",d);
+    }
+    unbusy();CS=null;
+    toast(src.length+(src.length===1?" voce importata":" voci importate"));
+    return go("doc",{tab:"items"});
+  }
+  if(a==="photoSrc")return go("photosrc");
+  if(a==="phTake"){
+    const ph=(await dbByDoc(id)).filter(x=>x.kind==="photo").sort((x,y)=>x.num-y.num);
+    if(!ph.length)return toast("Quel report non ha foto");
+    let mode="add";
+    if(S.photos.length){
+      mode=await choose("Ci sono già "+S.photos.length+" foto. Cosa faccio con le "+ph.length+" che arrivano?",
+        [{v:"rep",l:"Sostituisci le "+S.photos.length+" foto",cls:"red"},{v:"add",l:"Aggiungi in coda"}]);
+      if(!mode)return;
+    }
+    busy("Copia di "+ph.length+" foto…");
+    if(mode==="rep")for(const x of S.photos)await dbDel("defects",x.id);
+    let n=(await dbByDoc(S.doc.id)).reduce((m,x)=>Math.max(m,x.num||0),0);
+    for(let i=0;i<ph.length;i++){
+      const p=ph[i];
+      await dbPut("defects",{id:uid(),kind:"photo",docId:S.doc.id,projectId:S.doc.projectId,num:++n,
+        photo:p.photo,thumb:p.thumb,caption:p.caption||"",captionEn:p.captionEn||"",
+        x:p.x,y:p.y,angle:p.angle||0,createdAt:Date.now(),from:1});
+      busyPct((i+1)/ph.length);
+    }
+    unbusy();
+    toast(ph.length+" foto copiate: ora aggiorna le immagini");
+    return go("doc",{tab:"photos"});
+  }
   if(a==="impword"){
     const f=await pickDocx();if(!f)return;
     busy("Lettura del Word…");
@@ -1516,7 +1701,7 @@ async function act(a,id,el){
   }
   if(a==="savehead"){readHeadForm(S.doc);readPresent(S.doc);await dbPut("docs",S.doc);toast("Salvato");return render();}
   if(a==="deldoc"){
-    if(!confirm("Eliminare questo documento, le sue "+S.items.length+" voci e le "+S.photos.length+" foto?"))return;
+    if(!await ask("Eliminare questo documento, le sue "+S.items.length+" voci e le "+S.photos.length+" foto?"))return;
     for(const x of S.items.concat(S.photos))await dbDel("defects",x.id);
     await dbDel("docs",S.doc.id);
     return go("docs",{type:S.doc.type});
@@ -1528,10 +1713,10 @@ async function act(a,id,el){
   if(a==="pickGallery")return importPhotos();
 
   /* foto del report */
-  if(a==="reshootGal"){const f=await pickFile(false);if(!f)return;d.photo=f;d.thumb=await resize(f,320,0.7);await dbPut("defects",d);return render();}
-  if(a==="reshoot"){const f=await pickFile(true);if(!f)return;d.photo=f;d.thumb=await resize(f,320,0.7);await dbPut("defects",d);return render();}
+  if(a==="reshootGal"){const f=await pickFile(false);if(!f)return;d.photo=f;d.thumb=await resize(f,320,0.7);delete d.from;await dbPut("defects",d);return render();}
+  if(a==="reshoot"){const f=await pickFile(true);if(!f)return;d.photo=f;d.thumb=await resize(f,320,0.7);delete d.from;await dbPut("defects",d);return render();}
   if(a==="savePhoto"){await dbPut("defects",d);toast("Salvato");return go("doc",{tab:"photos"});}
-  if(a==="delPhoto"){if(!confirm("Eliminare questa foto?"))return;await dbDel("defects",d.id);return go("doc",{tab:"photos"});}
+  if(a==="delPhoto"){if(!await ask("Eliminare questa foto?"))return;await dbDel("defects",d.id);return go("doc",{tab:"photos"});}
 
   /* voce */
   if(a==="shootBefore"){const f=await pickFile(true);if(!f)return;d.before=f;d.thumb=await resize(f,320,0.7);await dbPut("defects",d);return render();}
@@ -1555,7 +1740,7 @@ async function act(a,id,el){
   }
   if(a==="replace"){PL.tmp=null;PL.step=0;$("#stepHint").innerHTML="1 di 2 &mdash; tocca sulla pianta il punto in cui ti trovi";drawPlan($("#pc").getContext("2d"));return;}
   if(a==="savePlace"){if(!PL.tmp)return toast("Tocca prima la tua posizione");d.x=PL.tmp.x;d.y=PL.tmp.y;d.angle=PL.tmp.angle;await dbPut("defects",d);toast("Posizione salvata");return go(S.placeBack||"item");}
-  if(a==="delItem"){if(!confirm("Eliminare questa "+c.item.toLowerCase()+"?"))return;await dbDel("defects",d.id);return go("doc",{tab:"items"});}
+  if(a==="delItem"){if(!await ask("Eliminare questa "+c.item.toLowerCase()+"?"))return;await dbDel("defects",d.id);return go("doc",{tab:"items"});}
 }
 
 /* ============ migrazione dai dati vecchi ============
